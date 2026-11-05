@@ -1,0 +1,38 @@
+# QMIX 独立配置：共享局部 GRU + 单调 mixer；预算单位是联合环境步。
+env: spread
+algorithm: qmix
+seed: 0
+device: cpu
+total_steps: 100000
+
+hidden_size: 64
+mixing_size: 32
+hypernet_size: 64
+use_rnn: true
+use_last_action: true
+use_agent_id: true
+double_q: true
+
+# 回放容量、batch 和预热均按回合计；每个回合结束后更新一次。
+replay_capacity: 256
+batch_size: 16
+learning_starts_episodes: 16
+updates_per_episode: 1
+# 单位为 learner 更新次数，在线 Q 网络与 mixer 同时硬同步到目标网络。
+target_update_interval: 200
+lr: 0.0005
+rmsprop_alpha: 0.99
+optimizer_eps: 0.00001
+gamma: 0.99
+max_grad_norm: 10.0
+
+epsilon_start: 1.0
+epsilon_finish: 0.05
+epsilon_anneal_steps: 50000
+evaluation_epsilon: 0.05
+
+# 只适用合作团队。训练取 mean_i(r_i)，日志和公共评估仍记录环境原始奖励。
+# 正式比较前需统一其他方法的奖励约定；现有 compare 不校验这个字段。
+# 可选 shared 要求所有个体奖励已相同；sum 则显式求和。
+reward_aggregation: mean
+checkpoint_interval: 10000
