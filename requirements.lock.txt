@@ -1,0 +1,44 @@
+# Exact version constraints from the validated Windows CPU environment.
+# Install torch from the CPU/cu128 index as documented; +cpu is intentionally omitted.
+# Platform-specific dependencies may additionally be resolved by pip/uv.
+cloudpickle==3.1.2
+colorama==0.4.6
+contourpy==1.4.0
+cycler==0.12.1
+farama-notifications==0.0.6
+filelock==4.2.8
+fonttools==4.68.0
+fsspec==2026.9.0
+gymnasium==1.4.0
+imageio==2.38.1
+iniconfig==2.3.1
+jinja2==3.1.6
+kiwisolver==1.5.1
+lbforaging==2.0.0
+markupsafe==3.0.4
+matplotlib==3.11.2
+mpe2==1.1.1
+mpmath==1.3.0
+networkx==3.7
+numpy==2.5.4
+packaging==26.3
+pettingzoo==1.27.0
+pillow==12.3.0
+pip==26.3
+pluggy==1.7.0
+pygame-ce==2.5.8
+pyglet==1.5.31
+pygments==2.21.0
+pyparsing==3.3.3
+pytest==9.2.0
+python-dateutil==4.0.0
+pyyaml==6.0.3
+ruff==0.17.3
+rware==2.0.0
+scipy==1.18.1
+setuptools==84.2.1
+six==1.17.0
+sympy==1.14.0
+torch==2.7.1
+typing-extensions==4.16.0
+tzdata==2026.6

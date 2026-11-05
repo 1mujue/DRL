@@ -1,0 +1,13 @@
+# IPPO / 集中 critic PPO 共用起点；场景参数使用公共评估协议的默认值。
+env: spread
+algorithm: ippo
+seed: 0
+device: cpu
+total_steps: 100000
+rollout_steps: 256
+batch_size: 64
+epochs: 4
+lr: 0.0003
+gamma: 0.99
+gae_lambda: 0.95
+clip: 0.2

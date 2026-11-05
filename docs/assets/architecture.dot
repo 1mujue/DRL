@@ -1,0 +1,37 @@
+digraph Architecture {
+  graph [rankdir=TB, bgcolor="white", pad=0.25, nodesep=0.85, ranksep=0.5,
+         fontname="Microsoft YaHei", fontsize=17, compound=true];
+  node [shape=box, style="rounded,filled", fillcolor="#f8fafc", color="#94a3b8",
+        fontname="Microsoft YaHei", fontsize=15, width=2.2, margin="0.25,0.18", penwidth=1.3];
+  edge [fontname="Microsoft YaHei", fontsize=12, color="#64748b", arrowsize=0.7];
+  C [label="实验配置\n算法 · 场景 · 种子 · 预算", width=2.7, fillcolor="#eff6ff", color="#2563eb"];
+  T [label="公共实验入口\nexperiments/runner.py", width=2.9, fillcolor="#eff6ff", color="#2563eb"];
+  C -> T;
+  subgraph cluster_train {
+    label="训练：每位成员负责算法研究"; style="rounded,filled"; fillcolor="#f8fafc"; color="#cbd5e1";
+    A [label="算法实现\nalgorithms/ppo/", fillcolor="#ecfdf5", color="#059669"];
+    E [label="环境适配\nenvironments/"];
+    {rank=same; A; E;}
+    A -> E [label="动作"];
+    E -> A [label="观测/奖励\nstate", constraint=false];
+  }
+  T -> A;
+  M [label="模型与结果\nruns/", fillcolor="#eff6ff", color="#2563eb"];
+  A -> M;
+  subgraph cluster_eval {
+    label="评估：全组使用固定口径"; style="rounded,filled"; fillcolor="#f8fafc"; color="#cbd5e1";
+    P [label="执行策略\nPolicy.act", fillcolor="#ecfdf5", color="#059669"];
+    V [label="测试环境\n同一场景设置"];
+    S [label="统一计分与评估\nevaluation/", width=3.0, fillcolor="#fff7ed", color="#ea580c"];
+    {rank=same; P; V; S;}
+    P -> V [label="动作"];
+    V -> P [label="局部观测", constraint=false];
+    V -> S [label="任务事实"];
+  }
+  M -> P;
+  J [label="逐回合指标 JSON\n协议版本 + 可比条件", width=2.7, fillcolor="#fff7ed", color="#ea580c"];
+  R [label="统计与图表\ncompare.py + plots.py", width=2.9, fillcolor="#fff7ed", color="#ea580c"];
+  {rank=same; J; R;}
+  S -> J;
+  J -> R;
+}
