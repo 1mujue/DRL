@@ -1,7 +1,8 @@
 # 多智能体强化学习算法对比
 
 研究：**同场景比较算法，同算法跨场景验证。** 每人认领至少2个DRL算法，共用环境和固定指标。
-目前可运行 IPPO、集中 critic PPO（配置名 `mappo`，不是完整 MAPPO 复现），其余 **参考算法** 见 [算法清单与认领](docs/ALGORITHMS.md)。
+目前可运行 IPPO、DQN-based IQL、集中 critic PPO（配置名 `mappo`，不是完整 MAPPO 复现），其余 **参考算法** 见 [算法清单与认领](docs/ALGORITHMS.md)。
+IPPO/IQL 的方法说明、四场景批量实验和 Tag 固定对手训练见 [IPPO 与 IQL](docs/IPPO_IQL.md)。
 
 ## 目录结构
 
@@ -11,6 +12,7 @@ src/teamwork/
 │   ├── base.py                 # Algorithm / Policy 公共合同
 │   ├── registry.py             # 新算法在这里注册
 │   ├── baselines.py            # 随机与规则对照
+│   ├── iql/                    # 独立 DQN、回放与目标网络
 │   └── ppo/                    # 现有 IPPO / 集中 critic PPO
 │       ├── algorithm.py        # 接口、策略动作与模型加载
 │       └── trainer.py          # 网络、采样、损失与参数更新
@@ -28,6 +30,8 @@ src/teamwork/
 └── cli.py                      ← 命令行参数，不放算法实现
 
 configs/algorithms/ppo.yaml      # 当前 PPO 家族的共用参数起点
+configs/algorithms/ippo.yaml     # IPPO 的独立配置
+configs/algorithms/iql.yaml      # IQL 的独立配置
 tests/                          # 按 algorithms / environments / evaluation 对应放测试
 scripts/setup.py                # Windows / Ubuntu 共用安装入口
 scripts/smoke.py                # 测试、训练、评估、图表的一键验收

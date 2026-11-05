@@ -5,12 +5,9 @@ networks, no weight sharing, no recurrent policy, no self-play opponent pool.
 """
 
 import csv
-import importlib.metadata
 import json
-import subprocess
 from pathlib import Path
 
-import numpy as np
 import torch
 from torch import nn
 from torch.distributions import Categorical
@@ -18,7 +15,8 @@ from torch.distributions import Categorical
 from ...environments.base import state
 from ...environments.registry import make_env
 from ...evaluation.metrics import resolved_env_kwargs
-from ...experiments.runner import seed_all
+from ...experiments.runner import seed_all, write_provenance
+from ..training import training_agents, with_opponent_actions
 
 
 def mlp(n_in, n_out):
@@ -48,70 +46,49 @@ def gae(rewards, values, next_values, terminated, episode_end, gamma, lam):
     return advantages, advantages + values
 
 
-def create_agents(env, observations, algorithm, device):
-    global_size = len(state(env))
+def create_agents(env, observations, algorithm, device, names=None):
+    global_size = len(state(env)) if algorithm == "mappo" else None
     return {
         a: Agent(
             len(observations[a]),
             env.action_space(a).n,
             global_size if algorithm == "mappo" else len(observations[a]),
         ).to(device)
-        for a in env.possible_agents
+        for a in (env.possible_agents if names is None else names)
     }
 
 
 def train(config, out):
     # 环境默认参数统一来自评估协议；不再让训练默认 25 步、评估默认 50 步。
     config = {**config, "env_kwargs": resolved_env_kwargs(config["env"], config.get("env_kwargs"))}
-    out = Path(out)
-    out.mkdir(parents=True, exist_ok=False)
     seed_all(config["seed"])
     device = torch.device(config.get("device", "cpu"))
     env = make_env(config["env"], **config.get("env_kwargs", {}))
     obs, _ = env.reset(seed=config["seed"])
     for i, a in enumerate(env.possible_agents):
         env.action_space(a).seed(config["seed"] + i)
-    agents = create_agents(env, obs, config["algorithm"], device)
+    try:
+        names = training_agents(env, config)
+    except ValueError:
+        env.close()
+        raise
+    out = Path(out)
+    try:
+        out.mkdir(parents=True, exist_ok=False)
+    except OSError:
+        env.close()
+        raise
+    agents = create_agents(env, obs, config["algorithm"], device, names)
     optimizers = {
         a: torch.optim.Adam(p.parameters(), lr=config.get("lr", 3e-4)) for a, p in agents.items()
     }
     (out / "config.json").write_text(json.dumps(config, indent=2), encoding="utf-8")
-    try:
-        revision = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL, text=True, timeout=5
-        ).strip()
-    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
-        revision = "uncommitted"
-    try:
-        dirty = bool(
-            subprocess.check_output(
-                ["git", "status", "--porcelain"], stderr=subprocess.DEVNULL, text=True, timeout=5
-            ).strip()
-        )
-    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
-        dirty = None
-    (out / "provenance.json").write_text(
-        json.dumps(
-            {
-                "git_commit": revision,
-                "git_dirty": dirty,
-                "packages": {
-                    d.metadata["Name"]: d.version for d in importlib.metadata.distributions()
-                },
-                "torch": torch.__version__,
-                "numpy": np.__version__,
-                "device": str(device),
-                "steps_unit": "joint environment transitions",
-            },
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
+    write_provenance(out, device)
     episode, steps, ep_seed = 0, 0, config["seed"]
-    returns = dict.fromkeys(agents, 0.0)
+    returns = dict.fromkeys(env.possible_agents, 0.0)
     names = list(agents)
     metrics = (out / "episodes.csv").open("w", newline="", encoding="utf-8")
-    writer = csv.DictWriter(metrics, fieldnames=["episode", "steps"] + names)
+    writer = csv.DictWriter(metrics, fieldnames=["episode", "steps"] + list(returns))
     writer.writeheader()
     try:
         while steps < config["total_steps"]:
@@ -124,7 +101,7 @@ def train(config, out):
             }
             horizon = min(config.get("rollout_steps", 256), config["total_steps"] - steps)
             for _ in range(horizon):
-                global_obs = state(env)
+                global_obs = state(env) if config["algorithm"] == "mappo" else None
                 actions = {}
                 with torch.no_grad():
                     for a, model in agents.items():
@@ -146,9 +123,10 @@ def train(config, out):
                         ):
                             b[key].append(value)
                         actions[a] = action.item()
+                actions = with_opponent_actions(env, obs, actions, config)
                 next_obs, rewards, terminated, truncated, _ = env.step(actions)
-                next_state = state(env)
-                end = all(terminated[a] or truncated[a] for a in names)
+                next_state = state(env) if config["algorithm"] == "mappo" else None
+                end = all(terminated[a] or truncated[a] for a in env.possible_agents)
                 with torch.no_grad():
                     for a, model in agents.items():
                         b = buffers[a]
@@ -161,14 +139,15 @@ def train(config, out):
                         b["rew"].append(rewards[a])
                         b["term"].append(float(terminated[a]))
                         b["end"].append(float(end))
-                        returns[a] += rewards[a]
+                for a in returns:
+                    returns[a] += rewards[a]
                 obs = next_obs
                 steps += 1
                 if end:
                     episode += 1
                     writer.writerow({"episode": episode, "steps": steps, **returns})
                     metrics.flush()
-                    returns = dict.fromkeys(agents, 0.0)
+                    returns = dict.fromkeys(env.possible_agents, 0.0)
                     ep_seed += 1
                     obs, _ = env.reset(seed=ep_seed)
             for a, model in agents.items():
@@ -221,9 +200,14 @@ def train(config, out):
     return out / "model.pt"
 
 
-def load_policy(checkpoint, env, observations):
+def load_policy(checkpoint, env, observations, expected_algorithm=None):
     data = torch.load(checkpoint, map_location="cpu", weights_only=True)
-    agents = create_agents(env, observations, data["config"]["algorithm"], "cpu")
+    if expected_algorithm is not None and data["config"]["algorithm"] != expected_algorithm:
+        raise ValueError("Checkpoint algorithm mismatch")
+    agents = create_agents(
+        env, observations, data["config"]["algorithm"], "cpu",
+        training_agents(env, data["config"]),
+    )
     for a, model in agents.items():
         model.load_state_dict(data["agents"][a])
         model.eval()
