@@ -3,9 +3,18 @@
 from .base import Algorithm, Policy
 from .ppo.algorithm import PPOAlgorithm
 
+
+def _make_mappo():
+    # 独立方法按公共接口接入，不改变现有 PPO 注册项。
+    from .mappo.algorithm import MAPPOAlgorithm
+
+    return MAPPOAlgorithm()
+
+
 _FACTORIES = {
     "ippo": lambda: PPOAlgorithm("ippo"),
     "mappo": lambda: PPOAlgorithm("mappo"),  # 保留旧配置名；只是集中 critic PPO 基线。
+    "mappo_ff": _make_mappo,
 }
 
 

@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "drl-teamwork"
 version = "0.1.0"
 description = "Reproducible small-scale cooperative and competitive MARL coursework"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.11,<3.13"
 dependencies = [
   "mpe2>=1.0,<2", "pettingzoo>=1.24,<2", "gymnasium>=1.0,<2",
   "numpy>=1.26,<3", "torch==2.7.1", "pyyaml>=6,<7",
@@ -28,4 +28,4 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py312"
+target-version = "py311"
