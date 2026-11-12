@@ -6,14 +6,13 @@ from pathlib import Path
 
 import numpy as np
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 from torch.distributions import Categorical
 
 from ...environments.registry import make_env
 from ...evaluation.metrics import resolved_env_kwargs
 from ...experiments.runner import seed_all
-
 
 # ----------------------------- 网络 -----------------------------
 

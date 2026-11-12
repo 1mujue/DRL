@@ -1,10 +1,9 @@
 """新增算法：实现 Algorithm，然后在此注册；CLI 和评估无需增加 if 分支。"""
 
 from .base import Algorithm, Policy
-from .ppo.algorithm import PPOAlgorithm
 from .coma.algorithm import COMAAlgorithm
 from .maac.algorithm import MAACAlgorithm
-
+from .ppo.algorithm import PPOAlgorithm
 
 _FACTORIES = {
     "ippo": lambda: PPOAlgorithm("ippo"),
