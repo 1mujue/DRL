@@ -18,6 +18,17 @@ from ...evaluation.metrics import resolved_env_kwargs
 from ...experiments.runner import seed_all, write_provenance
 from ..training import training_agents, with_opponent_actions
 
+DEFAULTS = {
+    "device": "cpu",
+    "rollout_steps": 256,
+    "batch_size": 64,
+    "epochs": 4,
+    "lr": 0.0003,
+    "gamma": 0.99,
+    "gae_lambda": 0.95,
+    "clip": 0.2,
+}
+
 
 def mlp(n_in, n_out):
     return nn.Sequential(
@@ -60,7 +71,11 @@ def create_agents(env, observations, algorithm, device, names=None):
 
 def train(config, out):
     # 环境默认参数统一来自评估协议；不再让训练默认 25 步、评估默认 50 步。
-    config = {**config, "env_kwargs": resolved_env_kwargs(config["env"], config.get("env_kwargs"))}
+    config = {
+        **DEFAULTS,
+        **config,
+        "env_kwargs": resolved_env_kwargs(config["env"], config.get("env_kwargs")),
+    }
     seed_all(config["seed"])
     device = torch.device(config.get("device", "cpu"))
     env = make_env(config["env"], **config.get("env_kwargs", {}))

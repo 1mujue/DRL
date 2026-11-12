@@ -3,11 +3,13 @@
 研究：**同场景比较算法，同算法跨场景验证。** 每人认领至少2个DRL算法，共用环境和固定指标。
 目前可运行 IPPO、DQN-based IQL、集中 critic PPO（配置名 `mappo`，不是完整 MAPPO 复现），其余 **参考算法** 见 [算法清单与认领](docs/ALGORITHMS.md)。
 IPPO/IQL 的方法说明、四场景批量实验和 Tag 固定对手训练见 [IPPO 与 IQL](docs/IPPO_IQL.md)。
+供业务后端调用的训练任务、模型推理和结果查询 API 见 [算法接入交付](docs/API_INTEGRATION.md)。
 
 ## 目录结构
 
 ```text
 src/teamwork/
+├── api/                        ← 业务后端调用：请求、任务、推理与产物管理
 ├── algorithms/                 ← 主要工作区：各自的算法
 │   ├── base.py                 # Algorithm / Policy 公共合同
 │   ├── registry.py             # 新算法在这里注册

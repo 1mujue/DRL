@@ -27,6 +27,8 @@ IQL 指 Independent Q-Learning。每个 agent 的回放只保存自身 `(obs, ac
 参考：[IPPO 论文](https://arxiv.org/abs/2011.09533)、[EPyMARL IQL 配置](https://github.com/uoe-agents/epymarl/blob/main/src/config/algs/iql.yaml)。
 当前实现按本项目公共接口编写，具体网络、优化器和预算以保存的配置和上述说明为准。
 
+业务后端的统一调用方式与交付验收见 [算法 API 接入说明](API_INTEGRATION.md)。
+
 ## 安装与单次运行
 
 使用仓库安装入口 `python3 scripts/setup.py` 创建 Python 3.12 与 `.venv`。下列命令在仓库根目录运行；
