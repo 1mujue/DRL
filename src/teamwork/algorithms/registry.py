@@ -2,10 +2,15 @@
 
 from .base import Algorithm, Policy
 from .ppo.algorithm import PPOAlgorithm
+from .coma.algorithm import COMAAlgorithm
+from .maac.algorithm import MAACAlgorithm
+
 
 _FACTORIES = {
     "ippo": lambda: PPOAlgorithm("ippo"),
     "mappo": lambda: PPOAlgorithm("mappo"),  # 保留旧配置名；只是集中 critic PPO 基线。
+    "coma": lambda: COMAAlgorithm(),
+    "maac": lambda: MAACAlgorithm(),
 }
 
 
