@@ -4,8 +4,9 @@ from dataclasses import asdict
 
 import torch
 
+from ...environments.base import EnvironmentSpec
 from ..base import Algorithm, Policy
-from .networks import MAPPOModel
+from .networks import MAPPOModel, resolve_device, validate_observations
 
 
 class MAPPOPolicy(Policy):
@@ -29,20 +30,26 @@ class MAPPOAlgorithm(Algorithm):
     def train(self, config, out):
         from .trainer import train
 
-        if config["algorithm"] != "mappo_ff":
-            raise ValueError("Feedforward MAPPO configuration requires algorithm='mappo_ff'")
         return train(config, out)
 
-    def load_policy(self, checkpoint, env, observations):
+    def load_policy(self, checkpoint, env=None, observations=None, *, device="cpu"):
+        """可仅凭检查点加载；旧评估器的 (checkpoint, env, observations) 调用仍有效。"""
+        device = resolve_device(device)
         data = torch.load(checkpoint, map_location="cpu", weights_only=True)
-        if data.get("format") != "teamwork.mappo.v1":
+        if not isinstance(data, dict) or data.get("format") != "teamwork.mappo.v1":
             raise ValueError("Unsupported MAPPO checkpoint format")
-        spec = env.describe()
-        if data["spec"] != asdict(spec):
+        saved_spec = data["spec"]
+        spec = EnvironmentSpec(
+            tuple(saved_spec["agents"]), tuple(saved_spec["observation_sizes"]),
+            tuple(saved_spec["action_counts"]), saved_spec["state_size"],
+        )
+        if data["config"].get("algorithm", "mappo_ff") != "mappo_ff":
+            raise ValueError("Unsupported MAPPO checkpoint algorithm")
+        if env is not None and asdict(spec) != asdict(env.describe()):
             raise ValueError("Checkpoint EnvironmentSpec does not match the evaluation environment")
-        if set(observations) != set(spec.agents):
-            raise ValueError("MAPPO evaluation requires the saved fixed agent population")
-        model = MAPPOModel(spec, data["config"])
+        if observations is not None:
+            validate_observations(observations, spec)
+        model = MAPPOModel(spec, data["config"]).to(device)
         model.load_state_dict(data["model"])
         model.eval()
         return MAPPOPolicy(model)

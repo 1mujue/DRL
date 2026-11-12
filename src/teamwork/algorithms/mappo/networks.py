@@ -8,6 +8,39 @@ from torch import nn
 from ...environments.base import EnvironmentSpec
 
 
+def validate_observations(observations, spec, device=None):
+    """校验完整固定队伍；每项只能是该 agent 的一维有限局部观测。"""
+    if not isinstance(observations, dict) or set(observations) != set(spec.agents):
+        raise ValueError("MAPPO observations must cover the saved fixed agent population")
+    result = {}
+    for agent, size in zip(spec.agents, spec.observation_sizes):
+        try:
+            values = torch.as_tensor(observations[agent], dtype=torch.float32, device=device)
+        except (TypeError, ValueError, RuntimeError) as error:
+            raise ValueError(f"MAPPO observation for {agent!r} must be a numeric vector") from error
+        if values.shape != (size,) or not torch.isfinite(values).all():
+            raise ValueError(
+                f"MAPPO observation for {agent!r} must be a finite vector with shape ({size},)"
+            )
+        result[agent] = values
+    return result
+
+
+def resolve_device(value):
+    try:
+        device = torch.device(value)
+    except (TypeError, RuntimeError) as error:
+        raise ValueError("MAPPO device must be cpu or an available cuda device") from error
+    if device.type not in {"cpu", "cuda"}:
+        raise ValueError("MAPPO device must be cpu or cuda")
+    if device.type == "cuda" and (
+        not torch.cuda.is_available()
+        or (device.index is not None and device.index >= torch.cuda.device_count())
+    ):
+        raise ValueError("The requested CUDA device is not available")
+    return device
+
+
 class ValueNormalizer(nn.Module):
     """按样本累计 Welford 矩；仅改变训练目标尺度，不是 PopArt。
 
@@ -112,6 +145,7 @@ class MAPPOModel(nn.Module):
         """按组批量前向，返回每个 agent 的动作 logits：[action_count]。"""
         result = {}
         device = self.agent_ids.device
+        observations = validate_observations(observations, self.spec, device)
         for group, actor in self.actors.items():
             names = [a for a in observations if self.agent_to_group[a] == group]
             if not names:
@@ -126,8 +160,11 @@ class MAPPOModel(nn.Module):
     def critic_inputs(self, states):
         """[S] -> [N,S+N]；[T,S] -> [T,N,S+N]。"""
         states = torch.as_tensor(states, dtype=torch.float32, device=self.agent_ids.device)
-        if states.shape[-1] != self.spec.state_size:
-            raise ValueError("Global state size does not match the saved EnvironmentSpec")
+        if (
+            states.ndim < 1 or states.shape[-1] != self.spec.state_size
+            or not torch.isfinite(states).all()
+        ):
+            raise ValueError("MAPPO requires a finite state matching the saved EnvironmentSpec")
         n_agents = len(self.spec.agents)
         shape = (*states.shape[:-1], n_agents)
         joint = states.unsqueeze(-2).expand(*shape, self.spec.state_size)

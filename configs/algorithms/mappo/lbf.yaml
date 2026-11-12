@@ -1,0 +1,30 @@
+# 两智能体合作采集；sight=8 覆盖整个 8x8 场地。
+algorithm: mappo_ff
+env: lbf
+env_kwargs:
+  id: Foraging-8x8-2p-1f-coop-v3
+  sight: 8
+  max_episode_steps: 50
+seed: 0
+device: cpu
+total_steps: 100000
+reward_aggregation: mean
+gamma: 0.99
+checkpoint_interval: 10000
+
+share_policy: true
+hidden_size: 64
+hidden_layers: 2
+feature_normalization: true
+value_normalization: true
+rollout_steps: 256
+batch_size: 64
+epochs: 4
+actor_lr: 0.0003
+critic_lr: 0.0003
+gae_lambda: 0.95
+clip: 0.2
+value_clip: 0.2
+# 稀疏奖励下保留探索；参数尚未经过正式多种子调优。
+entropy_coef: 0.02
+max_grad_norm: 0.5

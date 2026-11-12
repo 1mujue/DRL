@@ -12,6 +12,18 @@ from .networks import LocalQController, QMixer
 def unroll(controller, observations, actions):
     """从回合起点展开 GRU；observations：[B,T+1,N,O]，Q：[B,T+1,N,A]。"""
     batch_size, time_size, n_agents, _ = observations.shape
+    if not controller.use_rnn:
+        # 前馈网络没有跨步隐藏依赖，将 B、T 合并为一个 batch，保留局部上一动作。
+        previous = observations.new_zeros(batch_size, time_size, n_agents, controller.max_actions)
+        if time_size > 1:
+            previous[:, 1:] = F.one_hot(
+                actions[:, :time_size - 1], controller.max_actions
+            ).to(observations.dtype)
+        values, _ = controller(
+            observations.flatten(0, 1), previous.flatten(0, 1),
+            controller.initial_hidden(batch_size * time_size),
+        )
+        return values.reshape(batch_size, time_size, n_agents, controller.max_actions)
     hidden = controller.initial_hidden(batch_size)
     previous = observations.new_zeros(batch_size, n_agents, controller.max_actions)
     outputs = []

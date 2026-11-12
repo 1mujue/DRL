@@ -5,13 +5,16 @@ import importlib.util
 import itertools
 import json
 from copy import deepcopy
+from pathlib import Path
 
 import numpy as np
 import pytest
 import torch
+import yaml
+from torch.nn import functional as F
 
 from teamwork.algorithms import make_algorithm
-from teamwork.algorithms.qmix.algorithm import QMIXPolicy
+from teamwork.algorithms.qmix import QMIXAlgorithm, QMIXPolicy
 from teamwork.algorithms.qmix.learner import QMIXLearner, masked_td_loss, td_targets, unroll
 from teamwork.algorithms.qmix.networks import LocalQController, QMixer, pack_observations
 from teamwork.algorithms.qmix.replay import EpisodeReplay
@@ -288,10 +291,174 @@ def test_cooperative_training_updates_saves_loads_and_evaluates(tmp_path, monkey
     assert evaluation["training_steps"] == 12 and len(evaluation["episodes"]) == 2
 
 
-@pytest.mark.parametrize("environment,env_kwargs", [("tag", {"max_cycles": 5}), ("spread", {})])
-def test_rejects_opposing_teams_and_unresolved_environment_without_writing(tmp_path, environment, env_kwargs):
-    config = {"algorithm": "qmix", "env": environment, "env_kwargs": env_kwargs,
+def test_rejects_opposing_teams_without_writing(tmp_path):
+    config = {"algorithm": "qmix", "env": "tag", "env_kwargs": {"max_cycles": 5},
               "seed": 0, "total_steps": 8}
-    with pytest.raises(ValueError, match="cooperative team|env_kwargs"):
+    with pytest.raises(ValueError, match="cooperative team"):
         make_algorithm("qmix").train(config, tmp_path / "invalid")
     assert not (tmp_path / "invalid").exists()
+
+
+@pytest.mark.parametrize("use_last_action,use_agent_id", [(True, True), (True, False), (False, True)])
+def test_feedforward_unroll_matches_sequential_outputs_and_gradients(use_last_action, use_agent_id):
+    torch.manual_seed(19)
+    spec = EnvironmentSpec(("a", "b"), (2, 3), (2, 3), 4)
+    controller = LocalQController(spec, config_for(
+        use_rnn=False, use_last_action=use_last_action, use_agent_id=use_agent_id,
+    )).double()
+    reference = deepcopy(controller)
+    observations = torch.randn(2, 5, 2, 3, dtype=torch.float64, requires_grad=True)
+    expected_inputs = observations.detach().clone().requires_grad_()
+    actions = torch.tensor([[[0, 2], [1, 0], [0, 1], [1, 2]]] * 2)
+    previous = observations.new_zeros(2, 2, 3)
+    hidden = reference.initial_hidden(2)
+    outputs = []
+    for time in range(5):
+        values, hidden = reference(expected_inputs[:, time], previous, hidden)
+        outputs.append(values)
+        if time < 4:
+            previous = F.one_hot(actions[:, time], 3).to(observations.dtype)
+    expected = torch.stack(outputs, dim=1)
+    calls = []
+    hook = controller.register_forward_hook(lambda *_: calls.append(1))
+    try:
+        actual = unroll(controller, observations, actions)
+    finally:
+        hook.remove()
+    assert len(calls) == 1
+    torch.testing.assert_close(actual, expected)
+    weights = torch.randn_like(actual)
+    (actual * weights).sum().backward()
+    (expected * weights).sum().backward()
+    torch.testing.assert_close(observations.grad, expected_inputs.grad)
+    for parameter, target in zip(controller.parameters(), reference.parameters()):
+        torch.testing.assert_close(parameter.grad, target.grad)
+
+
+def test_direct_yaml_api_and_checkpoint_only_policies_are_independent(tmp_path, monkeypatch):
+    path = Path(__file__).resolve().parents[2] / "configs" / "algorithms" / "qmix.yaml"
+    config = yaml.safe_load(path.read_text(encoding="utf-8"))
+    config.update(total_steps=8, env_kwargs={"max_cycles": 2}, hidden_size=8,
+                  mixing_size=4, hypernet_size=8, batch_size=2,
+                  learning_starts_episodes=2, replay_capacity=4, checkpoint_interval=0)
+    original = deepcopy(config)
+    algorithm = QMIXAlgorithm()
+    checkpoint = algorithm.train(config, tmp_path / "direct")
+    assert config == original
+    saved = torch.load(checkpoint, map_location="cpu", weights_only=True)
+    assert saved["steps"] == 8 and saved["updates"] > 0
+    assert saved["config"]["env_kwargs"] == resolved_env_kwargs("spread", {"max_cycles": 2})
+    env = make_env("spread", **saved["config"]["env_kwargs"])
+    try:
+        observations, _ = env.reset(seed=7)
+        legacy = algorithm.load_policy(checkpoint, env, observations)
+        spec = env.describe()
+        with pytest.raises(ValueError, match="fixed agent population"):
+            algorithm.load_policy(checkpoint, observations={})
+        monkeypatch.setattr(env, "describe", lambda: EnvironmentSpec(
+            spec.agents, spec.observation_sizes, spec.action_counts, spec.state_size + 1,
+        ))
+        with pytest.raises(ValueError, match="does not match"):
+            algorithm.load_policy(checkpoint, env, observations)
+    finally:
+        env.close()
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("Checkpoint-only inference attempted to construct an environment")
+
+    monkeypatch.setattr("teamwork.algorithms.qmix.trainer.make_env", forbidden)
+    first = algorithm.load_policy(checkpoint)
+    second = algorithm.load_policy(checkpoint, device="cpu")
+    expected = legacy.act(observations)
+    assert first.act(observations) == second.act(observations) == expected
+    second_hidden = second.hidden.clone()
+    second_actions = second.previous_actions.clone()
+    first.act(observations)
+    torch.testing.assert_close(second.hidden, second_hidden)
+    torch.testing.assert_close(second.previous_actions, second_actions)
+    first.reset()
+    assert first.act(observations) == expected
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    with pytest.raises(ValueError, match="CUDA device"):
+        algorithm.load_policy(checkpoint, device="cuda")
+    with pytest.raises(ValueError, match="cpu or cuda"):
+        algorithm.load_policy(checkpoint, device="meta")
+
+
+def test_config_defaults_are_resolved_without_aliasing_the_callers_dictionary():
+    config = {"env": "spread", "env_kwargs": {"max_cycles": 7}, "total_steps": 8,
+              "metadata": {"tags": ["api"]}}
+    original = deepcopy(config)
+    resolved = resolve_config(config)
+    assert resolved["algorithm"] == "qmix" and resolved["seed"] == 0
+    assert resolved["env_kwargs"] == resolved_env_kwargs("spread", {"max_cycles": 7})
+    resolved["env_kwargs"]["N"] = 9
+    resolved["metadata"]["tags"].append("changed")
+    assert config == original
+    assert resolve_config({"env": "spread", "total_steps": 1})["env_kwargs"] == (
+        resolved_env_kwargs("spread")
+    )
+
+
+def test_direct_api_supports_registered_environment_without_metric_defaults(tmp_path, monkeypatch):
+    from teamwork.environments import registry
+
+    monkeypatch.setitem(registry._BUILDERS, "qmix_custom_spread", registry._BUILDERS["spread"])
+    config = {
+        "env": "qmix_custom_spread", "env_kwargs": {"N": 2, "local_ratio": 0.0, "max_cycles": 2},
+        "total_steps": 8, "hidden_size": 8, "mixing_size": 4, "hypernet_size": 8,
+        "batch_size": 2, "learning_starts_episodes": 2, "replay_capacity": 4,
+        "checkpoint_interval": 0,
+    }
+    original = deepcopy(config)
+    checkpoint = QMIXAlgorithm().train(config, tmp_path / "custom")
+    assert config == original
+    saved = torch.load(checkpoint, map_location="cpu", weights_only=True)
+    assert saved["updates"] > 0 and saved["steps"] == 8
+    assert saved["config"]["env_kwargs"] == config["env_kwargs"]
+    policy = QMIXAlgorithm().load_policy(checkpoint)
+    env = registry.make_env(config["env"], **config["env_kwargs"])
+    try:
+        observations, _ = env.reset(seed=3)
+        actions = policy.act(observations)
+        assert all(env.action_space(agent).contains(action) for agent, action in actions.items())
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize("overrides", [
+    {"env_kwargs": None}, {"env_kwargs": []}, {"env_kwargs": {"max_cycles": float("nan")}},
+    {"metadata": object()}, {"algorithm": "ippo"}, {"env": "unknown"},
+    {"total_steps": 0}, {"seed": -1}, {"device": "meta"},
+])
+def test_invalid_direct_api_input_fails_before_writing(tmp_path, overrides):
+    config = {"env": "spread", "total_steps": 1, **overrides}
+    with pytest.raises((ValueError, TypeError)):
+        QMIXAlgorithm().train(config, tmp_path / "invalid")
+    assert not (tmp_path / "invalid").exists()
+
+
+def test_policy_validates_epsilon_and_deterministic_actions_do_not_consume_randomness():
+    spec = EnvironmentSpec(("a", "b"), (2, 2), (2, 3), 4)
+    policy = QMIXPolicy(LocalQController(spec, config_for()))
+    observations = {agent: np.ones(2, np.float32) for agent in spec.agents}
+
+    class NoRandom:
+        def random(self):
+            raise AssertionError("epsilon=0 must not consume randomness")
+
+    hidden = policy.hidden.clone()
+    previous = policy.previous_actions.clone()
+    for epsilon in (-0.1, 1.1, float("nan"), float("inf"), "0", True):
+        with pytest.raises(ValueError, match="epsilon"):
+            policy.sample_actions(observations, epsilon, NoRandom())
+        torch.testing.assert_close(policy.hidden, hidden)
+        torch.testing.assert_close(policy.previous_actions, previous)
+    before = deepcopy(np.random.get_state())
+    policy.act(observations)
+    after = np.random.get_state()
+    assert before[0] == after[0] and np.array_equal(before[1], after[1])
+    assert before[2:] == after[2:]
+    policy.sample_actions(observations, 0.0, NoRandom())
+    with pytest.raises(ValueError, match="epsilon"):
+        QMIXPolicy(policy.controller, evaluation_epsilon=2)

@@ -8,6 +8,7 @@ import csv
 import json
 import math
 import random
+from copy import deepcopy
 from dataclasses import asdict
 from pathlib import Path
 
@@ -16,12 +17,14 @@ import torch
 
 from ...environments.base import state
 from ...environments.registry import make_env
-from .algorithm import QMIXPolicy
+from ...evaluation.metrics import resolved_env_kwargs
+from .algorithm import QMIXPolicy, resolve_device
 from .learner import QMIXLearner
 from .networks import pack_observations
 from .replay import EpisodeReplay
 
 DEFAULTS = {
+    "algorithm": "qmix", "seed": 0,
     "device": "cpu", "gamma": 0.99, "lr": 0.0005,
     "hidden_size": 64, "mixing_size": 32, "hypernet_size": 64,
     "use_rnn": True, "use_last_action": True, "use_agent_id": True,
@@ -35,19 +38,33 @@ DEFAULTS = {
 
 
 def resolve_config(config):
-    result = {**DEFAULTS, **config}
+    if not isinstance(config, dict):
+        raise TypeError("QMIX config must be a dictionary")
+    # 在创建环境或输出前检查序列化，深拷贝避免接口调用改变调用方配置。
+    json.dumps(config, allow_nan=False)
+    result = {**DEFAULTS, **deepcopy(config)}
     if result.get("algorithm") != "qmix":
         raise ValueError("QMIX configuration requires algorithm='qmix'")
+    if not isinstance(result.get("env"), str) or not result["env"]:
+        raise ValueError("QMIX config requires an environment name")
     if result["env"] == "tag":
         raise ValueError("QMIX requires one cooperative team; Tag needs a fixed-team wrapper")
-    if not isinstance(result.get("env_kwargs"), dict) or not result["env_kwargs"]:
-        raise ValueError("Provide resolved env_kwargs or train through experiments.run_training")
+    if "env_kwargs" in result and not isinstance(result["env_kwargs"], dict):
+        raise TypeError("QMIX env_kwargs must be a dictionary")
+    try:
+        result["env_kwargs"] = resolved_env_kwargs(result["env"], result.get("env_kwargs"))
+    except KeyError:
+        # 自定义注册环境可以没有公共评估协议；训练仅依赖环境接口及显式参数。
+        result["env_kwargs"] = result.get("env_kwargs", {})
     for key in (
         "total_steps", "hidden_size", "mixing_size", "hypernet_size", "replay_capacity",
         "batch_size", "learning_starts_episodes", "updates_per_episode",
         "target_update_interval", "epsilon_anneal_steps",
     ):
-        if isinstance(result[key], bool) or not isinstance(result[key], int) or result[key] < 1:
+        if (
+            isinstance(result.get(key), bool) or not isinstance(result.get(key), int)
+            or result[key] < 1
+        ):
             raise ValueError(f"{key} must be a positive integer")
     for key in ("seed", "checkpoint_interval"):
         if isinstance(result[key], bool) or not isinstance(result[key], int) or result[key] < 0:
@@ -131,11 +148,7 @@ def train(config, out):
     out = Path(out)
     if out.exists():
         raise FileExistsError(f"Run directory already exists: {out}")
-    device = torch.device(config["device"])
-    if device.type not in {"cpu", "cuda"}:
-        raise ValueError("QMIX device must be cpu or cuda")
-    if device.type == "cuda" and not torch.cuda.is_available():
-        raise ValueError("CUDA was requested but is not available")
+    device = resolve_device(config["device"])
     random.seed(config["seed"])
     np.random.seed(config["seed"] % (2**32))
     torch.manual_seed(config["seed"])

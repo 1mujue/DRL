@@ -8,6 +8,7 @@ import csv
 import json
 import math
 import random
+from copy import deepcopy
 from dataclasses import asdict
 from pathlib import Path
 
@@ -18,9 +19,12 @@ from torch.distributions import Categorical
 
 from ...environments.base import state
 from ...environments.registry import make_env
-from .networks import MAPPOModel, ValueNormalizer
+from ...evaluation.metrics import resolved_env_kwargs
+from .networks import MAPPOModel, ValueNormalizer, resolve_device, validate_observations
 
 DEFAULTS = {
+    "algorithm": "mappo_ff",
+    "seed": 0,
     "device": "cpu",
     "rollout_steps": 256,
     "batch_size": 64,
@@ -45,16 +49,27 @@ DEFAULTS = {
     "actor_output_gain": 0.01,
     "linear_lr_decay": False,
     "checkpoint_interval": 10000,
+    "reward_aggregation": "individual",
 }
 
 
 def resolve_config(config):
-    result = {**DEFAULTS, **config}
-    if not isinstance(result.get("env_kwargs"), dict) or not result["env_kwargs"]:
-        raise ValueError(
-            "MAPPO requires explicit resolved env_kwargs; use experiments.run_training "
-            "to resolve protocol defaults, or provide complete environment settings"
-        )
+    if not isinstance(config, dict):
+        raise TypeError("MAPPO config must be a dictionary")
+    result = {**DEFAULTS, **deepcopy(config)}
+    if result["algorithm"] != "mappo_ff":
+        raise ValueError("Feedforward MAPPO configuration requires algorithm='mappo_ff'")
+    if not isinstance(result.get("env"), str) or not result["env"]:
+        raise ValueError("MAPPO config requires an environment name")
+    if "total_steps" not in result:
+        raise ValueError("MAPPO config requires total_steps")
+    if "env_kwargs" in result and not isinstance(result["env_kwargs"], dict):
+        raise TypeError("env_kwargs must be a dictionary")
+    try:
+        result["env_kwargs"] = resolved_env_kwargs(result["env"], result.get("env_kwargs"))
+    except KeyError:
+        # 自定义已注册环境可显式提供参数，不能隐式冒用其他场景的默认条件。
+        result.setdefault("env_kwargs", {})
     for key in ("total_steps", "rollout_steps", "batch_size", "epochs", "hidden_size", "hidden_layers"):
         value = result[key]
         if isinstance(value, bool) or not isinstance(value, int) or value < 1:
@@ -65,19 +80,19 @@ def resolve_config(config):
     if isinstance(interval, bool) or not isinstance(interval, int) or interval < 0:
         raise ValueError("checkpoint_interval must be a nonnegative integer (0 disables it)")
     for key in ("gamma", "gae_lambda"):
-        if not math.isfinite(result[key]) or not 0 <= result[key] <= 1:
+        if isinstance(result[key], bool) or not math.isfinite(result[key]) or not 0 <= result[key] <= 1:
             raise ValueError(f"{key} must lie in [0, 1]")
     for key in (
         "lr", "clip", "value_clip", "max_grad_norm", "adam_eps", "huber_delta", "actor_output_gain"
     ):
-        if not math.isfinite(result[key]) or result[key] <= 0:
+        if isinstance(result[key], bool) or not math.isfinite(result[key]) or result[key] <= 0:
             raise ValueError(f"{key} must be finite and positive")
     for key in ("value_loss_coef", "entropy_coef"):
-        if not math.isfinite(result[key]) or result[key] < 0:
+        if isinstance(result[key], bool) or not math.isfinite(result[key]) or result[key] < 0:
             raise ValueError(f"{key} must be finite and nonnegative")
     for key in ("actor_lr", "critic_lr"):
         result.setdefault(key, result["lr"])
-        if not math.isfinite(result[key]) or result[key] <= 0:
+        if isinstance(result[key], bool) or not math.isfinite(result[key]) or result[key] <= 0:
             raise ValueError(f"{key} must be finite and positive")
     for key in (
         "use_clipped_value_loss", "use_huber_loss", "value_normalization",
@@ -85,7 +100,52 @@ def resolve_config(config):
     ):
         if not isinstance(result[key], bool):
             raise TypeError(f"{key} must be a boolean")
+    if result["reward_aggregation"] not in {"individual", "mean", "sum", "shared"}:
+        raise ValueError("reward_aggregation must be individual, mean, sum or shared")
+    if result["env"] == "tag" and result["reward_aggregation"] != "individual":
+        raise ValueError("MAPPO team reward modes cannot combine opposing Tag roles")
+    json.dumps(result, allow_nan=False)
     return result
+
+
+def aggregate_rewards(rewards, agents, mode):
+    """训练奖励显式变换，CSV 始终保留环境原始个体回报。"""
+    if set(rewards) != set(agents):
+        raise ValueError("MAPPO rewards must cover the fixed agent population")
+    values = np.asarray([rewards[agent] for agent in agents], dtype=np.float64)
+    if values.shape != (len(agents),) or not np.isfinite(values).all():
+        raise ValueError("MAPPO requires finite scalar rewards")
+    if mode == "individual":
+        return values
+    if mode == "mean":
+        value = values.mean()
+    elif mode == "sum":
+        value = values.sum()
+    elif mode == "shared":
+        if not np.allclose(values, values[0], rtol=1e-6, atol=1e-6):
+            raise ValueError("shared reward mode requires identical rewards for all agents")
+        value = values[0]
+    else:
+        raise ValueError("Unknown MAPPO reward aggregation")
+    return np.full(len(agents), value, dtype=np.float64)
+
+
+def training_contract(config):
+    mode = config["reward_aggregation"]
+    return {
+        "algorithm": "mappo_ff", "implementation": "mappo_feedforward_v1",
+        "reward_aggregation": mode,
+        "reward_scope": "individual_agents" if mode == "individual" else "one_cooperative_team",
+        "execution": "local_observation", "central_state": "critic_during_training_only",
+        "step_unit": "joint_environment_steps", "resume_supported": False,
+    }
+
+
+def environment_state(env, spec):
+    values = state(env).copy()
+    if values.shape != (spec.state_size,) or not np.isfinite(values).all():
+        raise ValueError("MAPPO requires a finite fixed-size centralized state")
+    return values
 
 
 def compute_gae(rewards, values, next_values, terminated, episode_end, gamma, gae_lambda):
@@ -125,7 +185,7 @@ def _checkpoint(path, model, normalizer, config, steps):
     data = {
         "format": "teamwork.mappo.v1",
         "implementation": "mappo_feedforward_v1",
-        "training_contract": {"reward": "environment", "execution": "local_observation"},
+        "training_contract": training_contract(config),
         "resume_supported": False,
         "config": config,
         "steps": steps,
@@ -225,32 +285,40 @@ def _update(model, normalizer, actor_optimizers, critic_optimizer, batch, config
 
 def train(config, out):
     config = resolve_config(config)
+    out = Path(out)
+    if out.exists():
+        raise FileExistsError(f"Run directory already exists: {out}")
+    device = resolve_device(config["device"])
     random.seed(config["seed"])
-    np.random.seed(config["seed"])
+    np.random.seed(config["seed"] % (2**32))
     torch.manual_seed(config["seed"])
     torch.set_num_threads(1)
-    device = torch.device(config["device"])
-    if device.type not in {"cpu", "cuda"}:
-        raise ValueError("MAPPO device must be cpu or cuda")
-    if device.type == "cuda" and not torch.cuda.is_available():
-        raise ValueError("CUDA was requested but is not available")
-    out = Path(out)
-    out.mkdir(parents=True, exist_ok=False)
-    (out / "config.json").write_text(json.dumps(config, indent=2), encoding="utf-8")
     env = make_env(config["env"], **config.get("env_kwargs", {}))
     try:
-        return _train_environment(config, out, env, device)
+        observations, _ = env.reset(seed=config["seed"])
+        if config["reward_aggregation"] != "individual":
+            roles = set(env.policy_metadata.get("roles", {}).values())
+            if len(roles) > 1:
+                raise ValueError("MAPPO team reward modes cannot combine opposing roles")
+        spec = env.describe()
+        model = MAPPOModel(spec, config).to(device)
+        validate_observations(observations, spec, device)
+        environment_state(env, spec)
+        if set(env.agents) != set(spec.agents):
+            raise ValueError("MAPPO requires the full fixed agent population after reset")
+        out.mkdir(parents=True, exist_ok=False)
+        (out / "config.json").write_text(json.dumps(config, indent=2), encoding="utf-8")
+        (out / "training_contract.json").write_text(
+            json.dumps(training_contract(config), indent=2), encoding="utf-8"
+        )
+        return _train_environment(config, out, env, device, observations, model)
     finally:
         env.close()
 
 
-def _train_environment(config, out, env, device):
-    observations, _ = env.reset(seed=config["seed"])
-    spec = env.describe()
+def _train_environment(config, out, env, device, observations, model):
+    spec = model.spec
     names = list(spec.agents)
-    if set(observations) != set(names) or any(np.asarray(o).ndim != 1 for o in observations.values()):
-        raise ValueError("MAPPO requires fixed agents and flat vector observations")
-    model = MAPPOModel(spec, config).to(device)
     normalizer = ValueNormalizer().to(device)
     actor_optimizers = {
         group: torch.optim.Adam(actor.parameters(), lr=config["actor_lr"], eps=config["adam_eps"])
@@ -291,11 +359,14 @@ def _train_environment(config, out, env, device):
             if next_checkpoint:
                 horizon = min(horizon, next_checkpoint - steps)
             for _ in range(horizon):
+                # 环境可能原地复用观测数组，必须在 step 之前冻结 rollout 输入。
                 local = {
-                    name: torch.tensor(observations[name], dtype=torch.float32, device=device)
-                    for name in names
+                    name: values.clone()
+                    for name, values in validate_observations(observations, spec, device).items()
                 }
-                global_state = torch.tensor(state(env), dtype=torch.float32, device=device)
+                global_state = torch.tensor(
+                    environment_state(env, spec), dtype=torch.float32, device=device
+                )
                 with torch.no_grad():
                     logits = model.local_logits(local)
                     distributions = {name: Categorical(logits=logits[name]) for name in names}
@@ -311,6 +382,8 @@ def _train_environment(config, out, env, device):
                 next_obs, rewards, terminated, truncated, _ = env.step({
                     name: int(actions[i]) for i, name in enumerate(names)
                 })
+                if set(terminated) != set(names) or set(truncated) != set(names):
+                    raise ValueError("MAPPO requires fixed-population termination dictionaries")
                 ends = [terminated[name] or truncated[name] for name in names]
                 if any(ends) != all(ends):
                     raise ValueError("MAPPO currently requires synchronous fixed-population episodes")
@@ -318,11 +391,16 @@ def _train_environment(config, out, env, device):
                 if not ended and (set(next_obs) != set(names) or set(env.agents) != set(names)):
                     raise ValueError("Agent population changed during a MAPPO rollout")
                 with torch.no_grad():
-                    next_predictions = model.values(state(env))
-                    next_values = (
-                        normalizer.denormalize(next_predictions)
-                        if config["value_normalization"] else next_predictions
-                    )
+                    if all(terminated.values()):
+                        # 真终止不读取末状态；截断仍用真实末状态 bootstrap。
+                        next_values = torch.zeros_like(values)
+                    else:
+                        next_predictions = model.values(environment_state(env, spec))
+                        next_values = (
+                            normalizer.denormalize(next_predictions)
+                            if config["value_normalization"] else next_predictions
+                        )
+                training_rewards = aggregate_rewards(rewards, names, config["reward_aggregation"])
                 rows = {
                     "states": global_state,
                     "actions": actions,
@@ -331,7 +409,7 @@ def _train_environment(config, out, env, device):
                     "values": values,
                     "next_values": next_values,
                     "rewards": torch.tensor(
-                        [rewards[n] for n in names], dtype=torch.float32, device=device
+                        training_rewards, dtype=torch.float32, device=device
                     ),
                     "terminated": torch.tensor(
                         [float(terminated[n]) for n in names], dtype=torch.float32, device=device
