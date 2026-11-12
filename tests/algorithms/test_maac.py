@@ -1,8 +1,7 @@
-import numpy as np
 import torch
 
-from teamwork.algorithms.registry import make_algorithm, available_algorithms
 from teamwork.algorithms.maac import trainer as maac_trainer
+from teamwork.algorithms.registry import available_algorithms, make_algorithm
 
 
 def test_registered():
@@ -40,16 +39,17 @@ def test_update_step_runs():
     opts_actor = {a: torch.optim.Adam(actors[a].parameters(), lr=1e-3) for a in names}
     opts_critic = {a: torch.optim.Adam(critics[a].parameters(), lr=1e-3) for a in names}
 
+    # 注意这里的键名与 maac/trainer.py 里的 maac_update 严格对齐
     batch = {
         "all_obs": torch.randn(B, len(names), obs_dim),
         "all_next_obs": torch.randn(B, len(names), obs_dim),
         "acts": torch.randint(0, n_actions, (B, len(names))),
         "rew": torch.randn(B),
         "term": torch.zeros(B),
-        "end": torch.zeros(B),
     }
     cfg = {"_names": names, "_n_actions": n_actions,
-           "gamma": 0.99, "tau": 0.005, "alpha": 0.01}
+           "gamma": 0.99, "tau": 0.005, "alpha": 0.5}
+           
     stats = maac_trainer.maac_update(
         actors, critics, target_actors, target_critics,
         opts_actor, opts_critic, batch, cfg,
