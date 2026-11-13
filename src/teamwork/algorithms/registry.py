@@ -1,6 +1,8 @@
 """新增算法：实现 Algorithm，然后在此注册；CLI 和评估无需增加 if 分支。"""
 
 from .base import Algorithm, Policy
+from .coma.algorithm import COMAAlgorithm
+from .maac.algorithm import MAACAlgorithm
 from .mappo.algorithm import MAPPOAlgorithm
 from .ppo.algorithm import PPOAlgorithm
 from .qmix.algorithm import QMIXAlgorithm
@@ -8,6 +10,8 @@ from .qmix.algorithm import QMIXAlgorithm
 _FACTORIES = {
     "ippo": lambda: PPOAlgorithm("ippo"),
     "mappo": lambda: PPOAlgorithm("mappo"),  # 保留旧配置名；只是集中 critic PPO 基线。
+    "coma": lambda: COMAAlgorithm(),
+    "maac": lambda: MAACAlgorithm(),
 }
 
 

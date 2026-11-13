@@ -1,0 +1,14 @@
+env: spread
+algorithm: coma
+seed: 0
+device: cpu
+total_steps: 100000
+rollout_steps: 1024
+lr_actor: 0.00005
+lr_critic: 0.0005
+gamma: 0.99
+tau: 0.005
+actor_hidden: 64
+critic_hidden: 128
+reward_scale: 10.0
+update_epochs: 1
