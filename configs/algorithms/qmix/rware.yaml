@@ -1,0 +1,38 @@
+# 长回合仓储：不要沿用每 500 步只更新一次的通用配置。
+# 本配置仅是可运行起点；部分可观测、稀疏奖励仍需正式训练验证。
+algorithm: qmix
+env: rware
+env_kwargs:
+  id: rware-tiny-2ag-v2
+  sensor_range: 1
+  max_steps: 500
+  reward_type: INDIVIDUAL
+seed: 0
+device: cpu
+total_steps: 100000
+reward_aggregation: mean
+gamma: 0.99
+checkpoint_interval: 10000
+
+hidden_size: 64
+mixing_size: 32
+hypernet_size: 64
+use_rnn: true
+use_last_action: true
+use_agent_id: true
+double_q: true
+replay_capacity: 128
+batch_size: 8
+learning_starts_episodes: 8
+# 回放与 batch 按回合计；每回合结束后执行 4 次 learner 更新。
+updates_per_episode: 4
+# 目标同步按 learner 更新次数计。
+target_update_interval: 100
+lr: 0.0005
+rmsprop_alpha: 0.99
+optimizer_eps: 0.00001
+max_grad_norm: 10.0
+epsilon_start: 1.0
+epsilon_finish: 0.05
+epsilon_anneal_steps: 50000
+evaluation_epsilon: 0.05
