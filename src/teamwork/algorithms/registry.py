@@ -1,7 +1,9 @@
 """新增算法：实现 Algorithm，然后在此注册；CLI 和评估无需增加 if 分支。"""
 
 from .base import Algorithm, Policy
+from .mappo.algorithm import MAPPOAlgorithm
 from .ppo.algorithm import PPOAlgorithm
+from .qmix.algorithm import QMIXAlgorithm
 
 _FACTORIES = {
     "ippo": lambda: PPOAlgorithm("ippo"),
@@ -26,6 +28,10 @@ def make_algorithm(name) -> Algorithm:
     if not isinstance(algorithm, Algorithm):
         raise TypeError("Registered factory must return an Algorithm implementation")
     return algorithm
+
+
+register_algorithm("mappo_ff", MAPPOAlgorithm)
+register_algorithm("qmix", QMIXAlgorithm)
 
 
 __all__ = ["Algorithm", "Policy", "available_algorithms", "make_algorithm", "register_algorithm"]
