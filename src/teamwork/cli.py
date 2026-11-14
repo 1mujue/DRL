@@ -35,6 +35,8 @@ def main():
     tr.add_argument("--device", choices=["cpu", "cuda"])
     tr.add_argument("--algorithm", choices=available_algorithms())
     tr.add_argument("--env", choices=available_environments())
+    tr.add_argument("--team", choices=["all", "predators", "prey"])
+    tr.add_argument("--opponent", choices=["random", "rule"])
     ev = sub.add_parser("evaluate")
     ev.add_argument("--env", choices=available_environments(), default="spread")
     ev.add_argument("--policy", choices=["random", "rule"], default="random")
@@ -92,6 +94,8 @@ def main():
             ("total_steps", args.steps),
             ("seed", args.seed),
             ("device", args.device),
+            ("train_team", args.team),
+            ("train_opponent", args.opponent),
         ):
             if value is not None:
                 config[key] = value

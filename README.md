@@ -1,7 +1,10 @@
 # 多智能体强化学习算法对比
 
 研究：**同场景比较算法，同算法跨场景验证。** 每人认领至少2个DRL算法，共用环境和固定指标。
-目前已注册 IPPO、集中 critic PPO 基线、前馈 MAPPO 和 QMIX；调用名与场景配置见下表。候选方法的研究方向见 [算法清单与认领](docs/ALGORITHMS.md)，实际接入情况以本表和注册表为准。
+目前已注册 IPPO、DQN-based IQL、集中 critic PPO 基线、前馈 MAPPO、QMIX、COMA 和 MAAC；调用名与场景配置见下表。候选方法的研究方向见 [算法清单与认领](docs/ALGORITHMS.md)，实际接入情况以本表和注册表为准。
+
+IPPO/IQL 的方法说明、四场景批量实验和 Tag 固定对手训练见 [IPPO 与 IQL](docs/IPPO_IQL.md)。
+供业务后端调用的训练任务、模型推理和结果查询 API 见 [算法接入交付](docs/API_INTEGRATION.md)。
 
 ## 算法与场景配置
 
@@ -11,12 +14,12 @@
 |---|---|---|---|---|---|---|
 | MAPPO（前馈） | `mappo_ff` | [3 agent](configs/algorithms/mappo/spread.yaml) | | [全场视野](configs/algorithms/mappo/lbf.yaml)、[局部视野](configs/algorithms/mappo/lbf_partial.yaml) | [2 agent](configs/algorithms/mappo/rware.yaml) | `make_algorithm("mappo_ff")` |
 | QMIX（局部 GRU） | `qmix` | [3 agent](configs/algorithms/qmix/spread.yaml) | | [全场视野](configs/algorithms/qmix/lbf.yaml)、[局部视野](configs/algorithms/qmix/lbf_partial.yaml) | [2 agent](configs/algorithms/qmix/rware.yaml) | `make_algorithm("qmix")` |
-| IPPO 基线 | `ippo` | [默认配置](configs/algorithms/ppo.yaml) | | | | `make_algorithm("ippo")` |
+| IPPO 基线 | `ippo` | [独立配置](configs/algorithms/ippo.yaml) | [固定队伍](docs/IPPO_IQL.md) | [场景覆盖](docs/IPPO_IQL.md) | [场景覆盖](docs/IPPO_IQL.md) | `make_algorithm("ippo")` |
 | 集中 critic PPO 基线 | `mappo` | [共用配置](configs/algorithms/ppo.yaml) | | | | `make_algorithm("mappo")` |
-| DQN-based IQL | | | | | | |
+| DQN-based IQL | `iql` | [独立配置](configs/algorithms/iql.yaml) | [固定队伍](docs/IPPO_IQL.md) | [场景覆盖](docs/IPPO_IQL.md) | [场景覆盖](docs/IPPO_IQL.md) | `make_algorithm("iql")` |
 | VDN | | | | | | |
-| COMA | | | | | | |
-| MAAC | | | | | | |
+| COMA | `coma` | [默认配置](configs/algorithms/coma.yaml) | | | | `make_algorithm("coma")` |
+| MAAC | `maac` | [默认配置](configs/algorithms/maac.yaml) | | | | `make_algorithm("maac")` |
 | QTRAN | | | | | | |
 | QPLEX | | | | | | |
 | HAPPO | | | | | | |
@@ -87,6 +90,8 @@ src/teamwork/
 └── cli.py                      ← 命令行参数，不放算法实现
 
 configs/algorithms/ppo.yaml      # 当前 PPO 家族的共用参数起点
+configs/algorithms/ippo.yaml     # IPPO 的独立配置
+configs/algorithms/iql.yaml      # IQL 的独立配置
 tests/                          # 按 algorithms / environments / evaluation 对应放测试
 scripts/setup.py                # Windows / Ubuntu 共用安装入口
 scripts/smoke.py                # 测试、训练、评估、图表的一键验收
