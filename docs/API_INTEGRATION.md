@@ -6,7 +6,14 @@ Web 路由、用户业务与服务器部署由项目的公共后端承接。
 
 ## 安装与验收
 
-在 Python 3.12 环境中安装仓库：
+小组成员可先获取交付分支，再在 Python 3.12 环境中安装仓库：
+
+```bash
+git fetch origin
+git switch feat/ippo-iql
+```
+
+首次获取时，Git 会从同名远程分支建立本地跟踪分支。随后安装依赖：
 
 ```bash
 python -m pip install -e '.[dev,extra-envs]' -c requirements.lock.txt

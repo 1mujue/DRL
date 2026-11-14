@@ -10,5 +10,7 @@
     ".python": true,
     ".pytest_cache": true,
     ".ruff_cache": true
-  }
+  },
+  "python-envs.defaultEnvManager": "ms-python.python:conda",
+  "python-envs.defaultPackageManager": "ms-python.python:conda"
 }

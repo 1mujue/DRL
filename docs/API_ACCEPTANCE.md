@@ -48,3 +48,16 @@ Tag 固定追捕阵营，对手为规则策略。
 
 接口合同与组长调用示例见 [API_INTEGRATION](API_INTEGRATION.md)。
 公共后端需持有 API 实例并包装 Web 路由，跨进程崩溃恢复由服务层另行实现。
+
+## 共享仓库接入检查（2026-11-14）
+
+交付分支为 `feat/ippo-iql`。合入公共主分支 `657eae4` 后，保留 MAPPO、QMIX、COMA、MAAC
+及原有 PPO 基线的注册入口，并补齐 README 中 IPPO/IQL 的场景说明。
+
+- `ruff check .` 通过。
+- `python -m pytest -q`：197 passed，2 条第三方弃用警告。
+- `python scripts/smoke.py --skip-tests` 通过：IPPO、集中 critic PPO 和 IQL 各训练 1024 step，完成 CLI 评估、比较和绘图。
+- `python examples/algorithm_api.py --workspace <新目录>` 通过：IPPO/IQL 各训练 4096 step，完成 SDK 推理、每模型 3 回合评估及结果比较。
+
+本节记录合入公共代码后的本机回归验证。四场景 100000 step 结果仍以上文单种子验收为准。
+公共 Web 后端尚待调用方联调验收。

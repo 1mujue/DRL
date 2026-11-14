@@ -1,0 +1,17 @@
+env: spread
+algorithm: maac
+seed: 0
+device: cpu
+total_steps: 100000
+rollout_steps: 1024
+lr_actor: 0.0001
+lr_critic: 0.001
+gamma: 0.99
+tau: 0.005
+alpha: 0.5
+actor_hidden: 64
+critic_hidden: 128
+attn_embed_dim: 64
+attn_heads: 4
+reward_scale: 10.0
+update_epochs: 1
