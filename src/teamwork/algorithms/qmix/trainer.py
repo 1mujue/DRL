@@ -19,8 +19,8 @@ from ...environments.base import state
 from ...environments.registry import make_env
 from ...evaluation.metrics import resolved_env_kwargs
 from .algorithm import QMIXPolicy, resolve_device
-from .learner import QMIXLearner
 from .availability import lbf_action_availability
+from .learner import QMIXLearner
 from .networks import pack_observations
 from .replay import EpisodeReplay
 
