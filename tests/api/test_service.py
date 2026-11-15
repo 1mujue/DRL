@@ -144,7 +144,7 @@ def test_comparison_export_and_read_completed_history(trained, tmp_path):
         api.compare([refs[0], different], "success")
     export = tmp_path / "handoff.json"
     api.export_manifest(refs[0]["run_id"], export)
-    assert json.loads(export.read_text())["run"]["run_id"] == refs[0]["run_id"]
+    assert json.loads(export.read_text(encoding="utf-8"))["run"]["run_id"] == refs[0]["run_id"]
     with AlgorithmAPI(api.store.root) as reopened:
         assert len(reopened.list_runs()) == len(records)
         assert reopened.status(refs[0]["run_id"])["status"] == "succeeded"
