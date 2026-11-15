@@ -8,7 +8,7 @@ import torch
 
 from ..environments.registry import available_environments, make_env
 from ..evaluation.metrics import resolved_env_kwargs
-from .catalog import ALGORITHMS, INTEGER_PARAMETERS
+from .catalog import ALGORITHMS, INTEGER_PARAMETERS, NONNEGATIVE_PARAMETERS
 from .errors import invalid
 
 
@@ -73,6 +73,8 @@ class TrainingRequest(Request):
             raise invalid("algorithm", "Choose ippo or iql")
         if not isinstance(self.env, str) or self.env not in available_environments():
             raise invalid("env", f"Unknown environment: {self.env!r}")
+        if self.algorithm in {"vdn", "mat_dec"} and self.env == "tag":
+            raise invalid("env", f"{self.algorithm} requires a cooperative environment")
         positive_integer(self.steps, "steps")
         seed_value(self.seed)
         if self.device not in ("cpu", "cuda"):
@@ -94,13 +96,18 @@ class TrainingRequest(Request):
             if name == "device":
                 continue
             if name in INTEGER_PARAMETERS[self.algorithm]:
-                positive_integer(value, name, 0 if name == "learning_starts" else 1)
+                positive_integer(
+                    value, name, 0 if name in {"learning_starts", "warmup_steps"} else 1
+                )
                 continue
             if type(value) not in (int, float) or not math.isfinite(value):
                 raise invalid(name, f"{name} must be a finite number")
             if name in ("gamma", "gae_lambda", "epsilon_start", "epsilon_end", "eval_epsilon"):
                 if not 0 <= value <= 1:
                     raise invalid(name, f"{name} must be in [0, 1]")
+            elif name in NONNEGATIVE_PARAMETERS.get(self.algorithm, set()):
+                if value < 0:
+                    raise invalid(name, f"{name} must be nonnegative")
             elif value <= 0:
                 raise invalid(name, f"{name} must be positive")
         if self.algorithm == "iql":
@@ -108,6 +115,16 @@ class TrainingRequest(Request):
                 raise invalid("batch_size", "batch_size must not exceed buffer_size")
             if parameters["epsilon_end"] > parameters["epsilon_start"]:
                 raise invalid("epsilon_end", "epsilon_end must not exceed epsilon_start")
+        elif self.algorithm == "vdn":
+            if parameters["batch_size"] > parameters["replay_capacity"]:
+                raise invalid("batch_size", "batch_size must not exceed replay_capacity")
+            if parameters["epsilon_end"] > parameters["epsilon_start"]:
+                raise invalid("epsilon_end", "epsilon_end must not exceed epsilon_start")
+        elif self.algorithm == "mat_dec":
+            if not 0 < parameters["clip"] < 1:
+                raise invalid("clip", "clip must be in (0, 1)")
+            if parameters["embedding_dim"] % parameters["num_heads"]:
+                raise invalid("embedding_dim", "embedding_dim must be divisible by num_heads")
         settings = resolved_env_kwargs(self.env, json_object(self.env_kwargs, "env_kwargs"))
         return {
             **parameters,

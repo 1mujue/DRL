@@ -1,0 +1,20 @@
+# 项目内实现的前馈 VDN；详见 docs/VDN.md。
+env: spread
+algorithm: vdn
+seed: 0
+device: cpu
+total_steps: 100000
+# 仅用于 VDN 的训练目标；评估仍报告环境原始奖励与统一任务指标。
+team_reward: mean
+hidden_size: 64
+batch_size: 64
+warmup_steps: 256
+replay_capacity: 50000
+update_frequency: 1
+target_update_frequency: 500
+log_frequency: 1000
+lr: 0.0003
+gamma: 0.99
+epsilon_start: 1.0
+epsilon_end: 0.05
+epsilon_decay_steps: 50000

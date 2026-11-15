@@ -59,7 +59,9 @@ def test_bad_evaluation_request(payload):
 
 def test_catalog_and_requests_return_independent_data():
     info = catalog()
-    assert {a["id"] for a in info["algorithms"]} == {"ippo", "iql", "happo", "hasac_discrete"}
+    assert {a["id"] for a in info["algorithms"]} == {
+        "ippo", "iql", "happo", "hasac_discrete", "vdn", "mat_dec"
+    }
     assert {e["id"] for e in info["environments"]} == {"spread", "tag", "lbf", "rware"}
     info["algorithms"][0]["defaults"]["lr"] = -1
     assert catalog()["algorithms"][0]["defaults"]["lr"] > 0
@@ -69,3 +71,46 @@ def test_catalog_and_requests_return_independent_data():
     assert config["rollout_steps"] == 256
     assert len(spec["agents"]) == 3
     assert request.to_dict()["parameters"] == {"epochs": 2}
+
+
+@pytest.mark.parametrize(
+    "algorithm,parameters",
+    [
+        (
+            "vdn",
+            {"batch_size": 2, "replay_capacity": 8, "warmup_steps": 0},
+        ),
+        (
+            "mat_dec",
+            {"embedding_dim": 8, "num_heads": 2, "rollout_steps": 4, "batch_size": 2},
+        ),
+    ],
+)
+def test_new_algorithm_training_requests_resolve_defaults(algorithm, parameters):
+    config, spec = TrainingRequest(
+        algorithm, steps=8, parameters=parameters, env_kwargs={"max_cycles": 2}
+    ).validate()
+    assert config["algorithm"] == algorithm
+    assert len(spec["agents"]) == 3
+
+
+@pytest.mark.parametrize(
+    "algorithm,parameters",
+    [
+        ("vdn", {"batch_size": 8, "replay_capacity": 4}),
+        ("vdn", {"epsilon_start": 0.1, "epsilon_end": 0.2}),
+        ("mat_dec", {"embedding_dim": 7, "num_heads": 2}),
+        ("mat_dec", {"entropy_coef": -0.1}),
+        ("mat_dec", {"clip": 1.0}),
+        ("mat_dec", {"clip": 2.0}),
+    ],
+)
+def test_new_algorithm_invalid_parameter_relations_fail_before_training(algorithm, parameters):
+    with pytest.raises(AlgorithmAPIError):
+        TrainingRequest(algorithm, parameters=parameters).config()
+
+
+@pytest.mark.parametrize("algorithm", ["vdn", "mat_dec"])
+def test_cooperative_algorithms_reject_tag_before_task_creation(algorithm):
+    with pytest.raises(AlgorithmAPIError, match="cooperative"):
+        TrainingRequest(algorithm, env="tag", team="predators", opponent="rule").config()
