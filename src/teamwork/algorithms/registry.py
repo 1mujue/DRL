@@ -7,6 +7,8 @@ from .maac.algorithm import MAACAlgorithm
 from .mappo.algorithm import MAPPOAlgorithm
 from .ppo.algorithm import PPOAlgorithm
 from .qmix.algorithm import QMIXAlgorithm
+from .qplex.algorithm import QPLEXAlgorithm
+from .qtran.algorithm import QTRANAlgorithm
 
 _FACTORIES = {
     "iql": IQLAlgorithm,
@@ -38,6 +40,8 @@ def make_algorithm(name) -> Algorithm:
 
 register_algorithm("mappo_ff", MAPPOAlgorithm)
 register_algorithm("qmix", QMIXAlgorithm)
+register_algorithm("qtran", QTRANAlgorithm)
+register_algorithm("qplex", QPLEXAlgorithm)
 
 
 __all__ = ["Algorithm", "Policy", "available_algorithms", "make_algorithm", "register_algorithm"]

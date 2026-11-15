@@ -1,0 +1,11 @@
+# QPLEX 双层 dueling。正权重多头网络仅在训练时使用全局状态。
+env: spread
+algorithm: qplex
+seed: 0
+device: cpu
+total_steps: 100000
+reward_aggregation: mean
+hypernet_size: 64
+attention_heads: 4
+batch_size: 16
+learning_starts_episodes: 16

@@ -1,5 +1,21 @@
 # 安装与运行
 
+## WSL 使用 Conda
+
+已安装 Miniconda 的成员可以在项目根目录创建独立环境。已有 `deeprl-teamwork` 环境时，直接激活即可。
+
+```bash
+conda create -n deeprl-teamwork --override-channels -c conda-forge python=3.12 pip
+conda activate deeprl-teamwork
+python -m pip install 'torch==2.7.1+cpu' --index-url https://download.pytorch.org/whl/cpu
+python -m pip install -e '.[dev,extra-envs]' -c requirements.lock.txt
+```
+
+如果 VS Code 还指向旧解释器，在 WSL 窗口用 `Python: Select Interpreter` 选择 `deeprl-teamwork`。
+本项目 QTRAN 和 QPLEX 的测试步骤见 [方法说明](QTRAN_QPLEX.md)。
+
+## 使用项目虚拟环境的安装方式
+
 先安装 Git、可用的 Python（3.10+）和 [uv](https://docs.astral.sh/uv/getting-started/installation/)。
 如果已有 Python，可用 `python -m pip install uv` 安装 uv。
 

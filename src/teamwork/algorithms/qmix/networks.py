@@ -77,9 +77,14 @@ class LocalQController(nn.Module):
             next_hidden.reshape_as(hidden),
         )
 
-    def greedy_actions(self, q_values):
-        # 只屏蔽由空间尺寸补齐的动作；本接口没有动态 available-actions 输入。
-        return q_values.masked_fill(~self.action_mask, -torch.inf).argmax(dim=-1)
+    def available_action_mask(self, available_actions=None):
+        if available_actions is None:
+            return self.action_mask
+        return self.action_mask & available_actions
+
+    def greedy_actions(self, q_values, available_actions=None):
+        mask = self.available_action_mask(available_actions)
+        return q_values.masked_fill(~mask, -torch.inf).argmax(dim=-1)
 
 
 class QMixer(nn.Module):
