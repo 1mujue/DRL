@@ -6,8 +6,10 @@ from .happo.algorithm import HAPPOAlgorithm
 from .hasac.algorithm import HASACAlgorithm
 from .iql.algorithm import IQLAlgorithm
 from .maac.algorithm import MAACAlgorithm
+from .mat_dec.algorithm import MATDecAlgorithm
 from .mappo.algorithm import MAPPOAlgorithm
 from .ppo.algorithm import PPOAlgorithm
+from .vdn.algorithm import VDNAlgorithm
 from .qmix.algorithm import QMIXAlgorithm
 from .qplex.algorithm import QPLEXAlgorithm
 from .qtran.algorithm import QTRANAlgorithm
@@ -18,6 +20,8 @@ _FACTORIES = {
     "mappo": lambda: PPOAlgorithm("mappo"),  # 保留旧配置名；只是集中 critic PPO 基线。
     "coma": lambda: COMAAlgorithm(),
     "maac": lambda: MAACAlgorithm(),
+    "vdn": VDNAlgorithm,
+    "mat_dec": MATDecAlgorithm,
 }
 
 

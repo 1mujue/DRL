@@ -6,7 +6,9 @@ from importlib.util import find_spec
 from ..algorithms.happo.trainer import DEFAULTS as HAPPO_DEFAULTS
 from ..algorithms.hasac.trainer import DEFAULTS as HASAC_DEFAULTS
 from ..algorithms.iql.trainer import DEFAULTS as IQL_DEFAULTS
+from ..algorithms.mat_dec.trainer import DEFAULTS as MAT_DEC_DEFAULTS
 from ..algorithms.ppo.trainer import DEFAULTS as IPPO_DEFAULTS
+from ..algorithms.vdn.trainer import DEFAULTS as VDN_DEFAULTS
 from ..environments.registry import available_environments
 from ..evaluation.metrics import protocol_description, resolved_env_kwargs
 
@@ -50,6 +52,16 @@ ALGORITHMS = {
         "family": "actor_critic",
         "defaults": numeric_parameters(HASAC_DEFAULTS),
     },
+    "vdn": {
+        "name": "Value Decomposition Networks",
+        "family": "value_based",
+        "defaults": numeric_parameters(VDN_DEFAULTS),
+    },
+    "mat_dec": {
+        "name": "Multi-Agent Transformer (Decentralized Actor)",
+        "family": "policy_gradient",
+        "defaults": numeric_parameters(MAT_DEC_DEFAULTS),
+    },
 }
 INTEGER_PARAMETERS = {
     "ippo": {"rollout_steps", "batch_size", "epochs"},
@@ -71,7 +83,15 @@ INTEGER_PARAMETERS = {
         "learning_starts_episodes",
         "updates_per_episode",
     },
+    "vdn": {
+        "hidden_size", "batch_size", "warmup_steps", "replay_capacity",
+        "update_frequency", "target_update_frequency", "log_frequency", "epsilon_decay_steps",
+    },
+    "mat_dec": {
+        "embedding_dim", "num_heads", "num_blocks", "rollout_steps", "batch_size", "epochs",
+    },
 }
+NONNEGATIVE_PARAMETERS = {"mat_dec": {"entropy_coef", "value_coef"}}
 
 
 def catalog():
