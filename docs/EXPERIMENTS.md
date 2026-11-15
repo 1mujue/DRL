@@ -20,6 +20,8 @@ RWARE 2.0 支持 INDIVIDUAL/GLOBAL 交付计数，拒绝不能从奖励区分交
 
 - 同一场景设置、动作/信息条件、指标版本、测试种子和训练预算。换场景需分表，不把不同单位拼成总分。
 - Tag 固定另一方：`--team predators --opponent rule`，或对应 prey 设置；双方同时更换只作观察。
+  IPPO/IQL 的 `train` 和 `evaluate` 均支持这两个参数；固定对手训练的模型要求用同一阵营与对手评估。
+  检查点配置记录 `train_team/train_opponent`，评估结果的 `training_setup` 记录训练条件。
 - 评估默认 greedy，训练采样；随机基线固定动作空间种子。训练奖励改造必须另行统一并记录，见 [算法清单](ALGORITHMS.md)。
 - JSON 记录协议、环境参数/空间、相关依赖、测试种子、对手和源码校验值，生成 `benchmark_id`。
   `compare` 拒绝不同 benchmark、预算不一致、重复训练种子、旧格式和未固定对手的 Tag 结果；不能代替算法正确性审查。

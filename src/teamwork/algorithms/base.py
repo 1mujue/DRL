@@ -14,7 +14,7 @@ class Policy(ABC):
 
     @abstractmethod
     def act(self, observations: dict[str, np.ndarray], deterministic=True) -> dict[str, int]:
-        """输入各 agent 的局部观测，返回同名 agent 的动作。"""
+        """输入局部观测，返回受控 agent 动作；固定对手动作由公共评估器补全。"""
 
 
 class Algorithm(ABC):

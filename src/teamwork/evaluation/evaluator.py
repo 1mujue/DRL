@@ -63,6 +63,11 @@ def evaluate(
         data = torch.load(checkpoint, map_location="cpu", weights_only=True)
         if data["config"]["env"] != name:
             raise ValueError("Checkpoint environment mismatch")
+        trained_team = data["config"].get("train_team", "all")
+        if trained_team != "all" and (
+            team != trained_team or opponent != data["config"].get("train_opponent")
+        ):
+            raise ValueError("Evaluation team and opponent must match fixed-opponent training")
         trained = resolved_env_kwargs(name, data["config"].get("env_kwargs"))
         if env_kwargs is not None and resolved_env_kwargs(name, env_kwargs) != trained:
             raise ValueError("Evaluation settings do not match checkpoint environment")
@@ -122,9 +127,12 @@ def evaluate(
                 )
                 if opponent:
                     other = baseline_actions(env, obs, opponent)
-                    for agent in actions:
-                        if agent.startswith("adversary_") != (team == "predators"):
-                            actions[agent] = other[agent]
+                    actions = {
+                        agent: actions[agent]
+                        if agent.startswith("adversary_") == (team == "predators")
+                        else other[agent]
+                        for agent in env.agents
+                    }
                 if gif and ep == 0:
                     frames.append(env.render())
                 obs, rewards, _, _, _ = env.step(actions)
@@ -152,6 +160,10 @@ def evaluate(
         "algorithm": data["config"]["algorithm"] if data else policy,
         "training_seed": data["config"]["seed"] if data else None,
         "training_steps": data.get("steps") if data else None,
+        "training_setup": {
+            "team": data["config"].get("train_team", "all"),
+            "opponent": data["config"].get("train_opponent"),
+        } if data else None,
         "model_sha256": hashlib.sha256(Path(checkpoint).read_bytes()).hexdigest() if data else None,
         "checkpoint": str(checkpoint) if checkpoint else None,
         "benchmark_id": benchmark_id,

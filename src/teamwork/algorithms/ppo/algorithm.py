@@ -13,7 +13,8 @@ class PPOPolicy(Policy):
     def act(self, observations, deterministic=True):
         with torch.no_grad():
             actions = {}
-            for agent, observation in observations.items():
+            for agent in self.models:
+                observation = observations[agent]
                 logits = self.models[agent].actor(torch.as_tensor(observation, dtype=torch.float32))
                 actions[agent] = (
                     int(logits.argmax())
@@ -33,7 +34,5 @@ class PPOAlgorithm(Algorithm):
         return trainer.train(config, out)
 
     def load_policy(self, checkpoint, env, observations):
-        models, data = trainer.load_policy(checkpoint, env, observations)
-        if data["config"]["algorithm"] != self.name:
-            raise ValueError("Checkpoint algorithm mismatch")
+        models, _ = trainer.load_policy(checkpoint, env, observations, self.name)
         return PPOPolicy(models)

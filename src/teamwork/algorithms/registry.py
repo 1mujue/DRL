@@ -2,12 +2,14 @@
 
 from .base import Algorithm, Policy
 from .coma.algorithm import COMAAlgorithm
+from .iql.algorithm import IQLAlgorithm
 from .maac.algorithm import MAACAlgorithm
 from .mappo.algorithm import MAPPOAlgorithm
 from .ppo.algorithm import PPOAlgorithm
 from .qmix.algorithm import QMIXAlgorithm
 
 _FACTORIES = {
+    "iql": IQLAlgorithm,
     "ippo": lambda: PPOAlgorithm("ippo"),
     "mappo": lambda: PPOAlgorithm("mappo"),  # 保留旧配置名；只是集中 critic PPO 基线。
     "coma": lambda: COMAAlgorithm(),
