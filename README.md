@@ -22,12 +22,13 @@ IPPO/IQL 的方法说明、四场景批量实验和 Tag 固定对手训练见 [I
 | MAAC | `maac` | [默认配置](configs/algorithms/maac.yaml) | | | | `make_algorithm("maac")` |
 | QTRAN | | | | | | |
 | QPLEX | | | | | | |
-| HAPPO | | | | | | |
-| HASAC | | | | | | |
+| HAPPO（异构 actor，顺序更新） | `happo` | [3 agent](configs/algorithms/happo/spread.yaml) | | [全场视野](configs/algorithms/happo/lbf.yaml)、[局部视野](configs/algorithms/happo/lbf_partial.yaml) | [2 agent](configs/algorithms/happo/rware.yaml) | `make_algorithm("happo")` |
+| HASAC（离散，软优势分解） | `hasac_discrete` | [3 agent](configs/algorithms/hasac/spread.yaml) | | [全场视野](configs/algorithms/hasac/lbf.yaml)、[局部视野](configs/algorithms/hasac/lbf_partial.yaml) | [2 agent](configs/algorithms/hasac/rware.yaml) | `make_algorithm("hasac_discrete")` |
 | MAT / MAT-Dec | | | | | | |
 | SMPE² | | | | | | |
 
 `mappo` 是旧集中 critic PPO 基线，独立 MAPPO 使用 `mappo_ff`。运行旧基线 `mappo` 时，需把共用 `ppo.yaml` 读入配置的 `algorithm` 改为 `mappo`，或通过 CLI 指定 `--algorithm mappo`。
+HAPPO/HASAC（离散）的实现说明、奖励口径与验收命令见 [方法与实验说明](docs/HAPPO_HASAC.md)。
 
 MAPPO/QMIX 的成对场景配置固定相同环境条件、训练预算和 `reward_aggregation: mean`；训练日志和公共评估仍记录原始个体回报。局部视野 LBF 的 `sight=2`，全场视野为 `sight=8`。当前 MAPPO 没有循环记忆；上述配置已做短程流程验证，尚不表示已收敛。Tag 暂无这两个方法的固定队伍训练配置，场景栏留空。
 

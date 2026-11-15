@@ -1,7 +1,7 @@
 # 算法认领清单
 
 每人认领 1–3 个，先完成 1 个主方法，其余作为扩展。难度是针对本项目的工程估计。
-目前代码支持 IPPO、DQN-based IQL 与集中 critic PPO 基线；其余方法均待接入，不能直接传给 `--algorithm`。
+目前代码支持 IPPO、DQN-based IQL、集中 critic PPO 基线，以及 HAPPO 与 HASAC（离散）；其余方法均待接入，不能直接传给 `--algorithm`。
 IPPO/IQL 的实现、配置和统一实验入口见 [方法与实验说明](IPPO_IQL.md)。
 
 ## 候选方法
