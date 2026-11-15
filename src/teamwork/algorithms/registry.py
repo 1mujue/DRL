@@ -6,13 +6,13 @@ from .happo.algorithm import HAPPOAlgorithm
 from .hasac.algorithm import HASACAlgorithm
 from .iql.algorithm import IQLAlgorithm
 from .maac.algorithm import MAACAlgorithm
-from .mat_dec.algorithm import MATDecAlgorithm
 from .mappo.algorithm import MAPPOAlgorithm
+from .mat_dec.algorithm import MATDecAlgorithm
 from .ppo.algorithm import PPOAlgorithm
-from .vdn.algorithm import VDNAlgorithm
 from .qmix.algorithm import QMIXAlgorithm
 from .qplex.algorithm import QPLEXAlgorithm
 from .qtran.algorithm import QTRANAlgorithm
+from .vdn.algorithm import VDNAlgorithm
 
 _FACTORIES = {
     "iql": IQLAlgorithm,
