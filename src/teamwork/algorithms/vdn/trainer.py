@@ -11,8 +11,9 @@ import importlib.metadata
 import json
 import math
 import random
+from copy import deepcopy
 from dataclasses import dataclass
-from numbers import Integral
+from numbers import Integral, Real
 from pathlib import Path
 
 import numpy as np
@@ -26,6 +27,7 @@ from ...experiments.runner import seed_all
 
 _DEFAULTS = {
     "algorithm": "vdn",
+    "seed": 0,
     "device": "cpu",
     "hidden_size": 64,
     "team_reward": "mean",
@@ -105,10 +107,14 @@ def create_q_networks(env, observations, device="cpu", hidden_size=64):
 def _validate_task(config):
     if config["env"] == "tag":
         raise ValueError("VDN is a cooperative learner and is not supported for Tag")
+    if config.get("train_team", "all") != "all" or config.get("train_opponent") is not None:
+        raise ValueError("VDN requires the full cooperative team without an opponent")
 
 
 def _resolve_config(config):
-    config = {**_DEFAULTS, **config}
+    if not isinstance(config, dict):
+        raise TypeError("config must be a dictionary")
+    config = deepcopy({**_DEFAULTS, **config})
     if config["algorithm"] != "vdn":
         raise ValueError("Algorithm configuration does not match VDN")
     _validate_task(config)
@@ -125,15 +131,21 @@ def _resolve_config(config):
         value = config[key]
         if isinstance(value, bool) or not isinstance(value, Integral) or value < 1:
             raise ValueError(f"{key} must be a positive integer")
+        config[key] = int(value)
     for key in ("seed", "warmup_steps"):
         value = config[key]
         if isinstance(value, bool) or not isinstance(value, Integral) or value < 0:
             raise ValueError(f"{key} must be a nonnegative integer")
+        config[key] = int(value)
+    if config["seed"] > 2**32 - 1:
+        raise ValueError("seed must fit an unsigned 32-bit integer")
     if config["replay_capacity"] < config["batch_size"]:
         raise ValueError("replay_capacity must be >= batch_size")
     if config["team_reward"] not in {"mean", "sum"}:
         raise ValueError("team_reward must be 'mean' or 'sum'")
     for key in ("lr", "gamma", "epsilon_start", "epsilon_end"):
+        if isinstance(config[key], bool) or not isinstance(config[key], Real):
+            raise TypeError(f"{key} must be a finite number")
         value = float(config[key])
         if not math.isfinite(value):
             raise ValueError(f"{key} must be finite")
@@ -142,8 +154,30 @@ def _resolve_config(config):
         raise ValueError("lr must be positive and gamma must be in [0, 1]")
     if not 0 <= config["epsilon_end"] <= config["epsilon_start"] <= 1:
         raise ValueError("Require 0 <= epsilon_end <= epsilon_start <= 1")
-    config["env_kwargs"] = resolved_env_kwargs(config["env"], config.get("env_kwargs"))
+    settings = config.get("env_kwargs", {})
+    if not isinstance(settings, dict) or any(not isinstance(key, str) for key in settings):
+        raise TypeError("env_kwargs must be a dictionary with string keys")
+    config["env_kwargs"] = resolved_env_kwargs(config["env"], settings)
+    json.dumps(config, allow_nan=False)
+    resolve_device(config["device"])
     return config
+
+
+def resolve_device(value):
+    if not isinstance(value, str):
+        raise TypeError("VDN device must be cpu or an available cuda device")
+    try:
+        device = torch.device(value)
+    except (TypeError, RuntimeError) as error:
+        raise ValueError("VDN device must be cpu or an available cuda device") from error
+    if device.type not in {"cpu", "cuda"}:
+        raise ValueError("VDN device must be cpu or an available cuda device")
+    if device.type == "cuda" and (
+        not torch.cuda.is_available()
+        or (device.index is not None and device.index >= torch.cuda.device_count())
+    ):
+        raise ValueError("VDN CUDA device is not available")
+    return device
 
 
 def _team_reward(rewards, agents, mode):
@@ -346,7 +380,7 @@ def _train(config, out, device, env):
             if steps % config["log_frequency"] == 0 or steps == config["total_steps"]:
                 updates_file.flush()
                 print(
-                    f"vdn steps={steps} episodes={episode} updates={updates} "
+                    f"steps={steps} algorithm=vdn episodes={episode} updates={updates} "
                     f"epsilon={epsilon:.3f} loss={last_loss}",
                     flush=True,
                 )

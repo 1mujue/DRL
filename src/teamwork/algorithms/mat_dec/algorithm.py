@@ -13,14 +13,29 @@ class MATDecPolicy(Policy):
 
     def act(self, observations, deterministic=True):
         """No critic call, joint observation tensor, or previous-agent action."""
-        device = next(self.model.parameters()).device
+        if not isinstance(observations, dict):
+            raise TypeError("MAT-Dec observations must map agent IDs to local vectors")
+        parameter = next(self.model.parameters())
+        local_observations = {}
+        for agent, observation in observations.items():
+            if agent not in self.model.indices:
+                raise ValueError(f"Unknown MAT-Dec agent: {agent}")
+            try:
+                local = torch.as_tensor(
+                    observation, dtype=parameter.dtype, device=parameter.device
+                )
+            except (TypeError, ValueError, RuntimeError) as error:
+                raise ValueError(f"Invalid MAT-Dec policy observation for {agent}") from error
+            index = self.model.indices[agent]
+            if (
+                local.shape != (self.model.spec["observation_sizes"][index],)
+                or not torch.isfinite(local).all()
+            ):
+                raise ValueError(f"Invalid MAT-Dec policy observation for {agent}")
+            local_observations[agent] = local
         actions = {}
         with torch.no_grad():
-            for agent, observation in observations.items():
-                local = torch.as_tensor(observation, dtype=torch.float32, device=device)
-                index = self.model.indices[agent]
-                if local.shape != (self.model.spec["observation_sizes"][index],):
-                    raise ValueError(f"Invalid MAT-Dec policy observation for {agent}")
+            for agent, local in local_observations.items():
                 logits = self.model.local_logits(agent, local)
                 action = logits.argmax() if deterministic else Categorical(logits=logits).sample()
                 actions[agent] = int(action.item())

@@ -121,6 +121,8 @@ class TrainingRequest(Request):
             if parameters["epsilon_end"] > parameters["epsilon_start"]:
                 raise invalid("epsilon_end", "epsilon_end must not exceed epsilon_start")
         elif self.algorithm == "mat_dec":
+            if not 0 < parameters["clip"] < 1:
+                raise invalid("clip", "clip must be in (0, 1)")
             if parameters["embedding_dim"] % parameters["num_heads"]:
                 raise invalid("embedding_dim", "embedding_dim must be divisible by num_heads")
         settings = resolved_env_kwargs(self.env, json_object(self.env_kwargs, "env_kwargs"))

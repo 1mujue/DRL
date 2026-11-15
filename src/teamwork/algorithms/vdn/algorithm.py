@@ -14,10 +14,26 @@ class VDNPolicy(Policy):
 
     def act(self, observations, deterministic=True):
         """Greedy evaluation; optional 5% epsilon-greedy exploration."""
+        if not isinstance(observations, dict):
+            raise TypeError("VDN observations must map agent IDs to local vectors")
+        local_observations = {}
+        for agent, observation in observations.items():
+            if agent not in self.networks:
+                raise ValueError(f"Unknown VDN agent: {agent}")
+            parameter = next(self.networks[agent].parameters())
+            try:
+                local = torch.as_tensor(
+                    observation, dtype=parameter.dtype, device=parameter.device
+                )
+            except (TypeError, ValueError, RuntimeError) as error:
+                raise ValueError(f"Invalid VDN observation for {agent}") from error
+            if local.shape != (parameter.shape[1],) or not torch.isfinite(local).all():
+                raise ValueError(f"Invalid VDN observation for {agent}")
+            local_observations[agent] = local
         actions = {}
         with torch.no_grad():
-            for agent, observation in observations.items():
-                q_values = self.networks[agent](torch.as_tensor(observation, dtype=torch.float32))
+            for agent, observation in local_observations.items():
+                q_values = self.networks[agent](observation)
                 if not deterministic and torch.rand(()).item() < 0.05:
                     action = torch.randint(q_values.numel(), ()).item()
                 else:

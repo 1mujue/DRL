@@ -101,6 +101,8 @@ def test_new_algorithm_training_requests_resolve_defaults(algorithm, parameters)
         ("vdn", {"epsilon_start": 0.1, "epsilon_end": 0.2}),
         ("mat_dec", {"embedding_dim": 7, "num_heads": 2}),
         ("mat_dec", {"entropy_coef": -0.1}),
+        ("mat_dec", {"clip": 1.0}),
+        ("mat_dec", {"clip": 2.0}),
     ],
 )
 def test_new_algorithm_invalid_parameter_relations_fail_before_training(algorithm, parameters):

@@ -54,7 +54,21 @@ result = evaluate(config["env"], checkpoint=checkpoint, episodes=5)
 save_result(result, "runs/mat_dec_api_check/eval.json")
 ```
 
-`make_algorithm("mat_dec").train(config, out)` 可直接返回模型路径；`run_training` 则会额外生成公共 `training.json`。网页后端可以把同步训练调用放进后台任务，供后续 HTTP API 使用。
+`make_algorithm("mat_dec").train(config, out)` 可直接返回模型路径；`run_training` 则会额外生成公共 `training.json`。
+
+新版仓库的统一 SDK 也可管理训练任务、模型和评估结果：
+
+```python
+from teamwork.api import AlgorithmAPI, TrainingRequest
+
+with AlgorithmAPI("runs/mat_dec_sdk") as api:
+    record = api.train(TrainingRequest("mat_dec", steps=512), timeout=120)
+    evaluation = api.evaluate(record["run_id"], {"episodes": 5})
+```
+
+`api.submit_training(...)` 提交后台任务后，可用 `api.status(run_id)` 查询进度；MAT-Dec 在每次 rollout 更新完成后输出步数。SDK 的 `parameters` 接受目录中列出的数值超参数；`team_reward`、`share_actor`、`value_clip` 等字符串或布尔选项使用算法默认值，需要调整时使用上面的完整配置调用。
+
+完整配置的种子范围为 `0` 到 `2**32 - 1`，设备支持 `cpu` 或本机可用的 `cuda`／`cuda:N`，数值超参数不接受布尔值或数字字符串。`clip` 必须在 `(0, 1)` 内，SDK 会在创建任务前检查。`Policy.act` 会拒绝非有限值和维度不匹配的局部观测。
 
 ## 参数与训练流程
 

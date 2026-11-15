@@ -5,7 +5,8 @@ import hashlib
 import importlib.metadata
 import json
 import math
-from numbers import Integral
+from copy import deepcopy
+from numbers import Integral, Real
 from pathlib import Path
 
 import numpy as np
@@ -21,6 +22,7 @@ from .model import create_model, environment_spec
 REFERENCE_COMMIT = "be3ff49c8264d454c1fe2c41582aa2bfc98498c8"
 _DEFAULTS = {
     "algorithm": "mat_dec",
+    "seed": 0,
     "device": "cpu",
     "embedding_dim": 64,
     "num_heads": 1,
@@ -55,11 +57,15 @@ _UPDATE_FIELDS = [
 
 
 def resolve_config(config):
-    config = {**_DEFAULTS, **config}
+    if not isinstance(config, dict):
+        raise TypeError("config must be a dictionary")
+    config = deepcopy({**_DEFAULTS, **config})
     if config["algorithm"] != "mat_dec":
         raise ValueError("Algorithm configuration does not match MAT-Dec")
     if config["env"] == "tag":
         raise ValueError("MAT-Dec currently supports cooperative teams; Tag is unsupported")
+    if config.get("train_team", "all") != "all" or config.get("train_opponent") is not None:
+        raise ValueError("MAT-Dec requires the full cooperative team without an opponent")
     for key in (
         "total_steps",
         "embedding_dim",
@@ -72,10 +78,12 @@ def resolve_config(config):
         value = config[key]
         if isinstance(value, bool) or not isinstance(value, Integral) or value < 1:
             raise ValueError(f"{key} must be a positive integer")
+        config[key] = int(value)
     if isinstance(config["seed"], bool) or not isinstance(config["seed"], Integral):
         raise TypeError("seed must be a nonnegative integer")
-    if config["seed"] < 0:
-        raise ValueError("seed must be a nonnegative integer")
+    if not 0 <= config["seed"] <= 2**32 - 1:
+        raise ValueError("seed must fit an unsigned 32-bit integer")
+    config["seed"] = int(config["seed"])
     if config["embedding_dim"] % config["num_heads"]:
         raise ValueError("embedding_dim must be divisible by num_heads")
     for key in ("share_actor", "value_clip"):
@@ -92,6 +100,8 @@ def resolve_config(config):
         "value_coef",
         "max_grad_norm",
     ):
+        if isinstance(config[key], bool) or not isinstance(config[key], Real):
+            raise TypeError(f"{key} must be a finite number")
         config[key] = float(config[key])
         if not math.isfinite(config[key]):
             raise ValueError(f"{key} must be finite")
@@ -103,8 +113,30 @@ def resolve_config(config):
         raise ValueError("clip must be in (0, 1)")
     if config["entropy_coef"] < 0 or config["value_coef"] < 0:
         raise ValueError("Loss coefficients must be nonnegative")
-    config["env_kwargs"] = resolved_env_kwargs(config["env"], config.get("env_kwargs"))
+    settings = config.get("env_kwargs", {})
+    if not isinstance(settings, dict) or any(not isinstance(key, str) for key in settings):
+        raise TypeError("env_kwargs must be a dictionary with string keys")
+    config["env_kwargs"] = resolved_env_kwargs(config["env"], settings)
+    json.dumps(config, allow_nan=False)
+    resolve_device(config["device"])
     return config
+
+
+def resolve_device(value):
+    if not isinstance(value, str):
+        raise TypeError("MAT-Dec device must be cpu or an available cuda device")
+    try:
+        device = torch.device(value)
+    except (TypeError, RuntimeError) as error:
+        raise ValueError("MAT-Dec device must be cpu or an available cuda device") from error
+    if device.type not in {"cpu", "cuda"}:
+        raise ValueError("MAT-Dec device must be cpu or an available cuda device")
+    if device.type == "cuda" and (
+        not torch.cuda.is_available()
+        or (device.index is not None and device.index >= torch.cuda.device_count())
+    ):
+        raise ValueError("MAT-Dec CUDA device is not available")
+    return device
 
 
 def compute_gae(rewards, values, next_values, terminated, episode_end, gamma, gae_lambda):
@@ -354,7 +386,7 @@ def _train(config, out, device, env):
                 )
             update_file.flush()
             print(
-                f"mat_dec steps={steps} episodes={episodes} rollouts={rollouts} "
+                f"steps={steps} algorithm=mat_dec episodes={episodes} rollouts={rollouts} "
                 f"updates={updates} loss={stats['loss']:.6f}",
                 flush=True,
             )

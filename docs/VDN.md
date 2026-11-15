@@ -40,7 +40,21 @@ result = evaluate(config["env"], checkpoint=checkpoint, episodes=5)
 save_result(result, "runs/vdn_api_check/eval.json")
 ```
 
-`run_training` 会通过注册表调用 `VDNAlgorithm.train`，并额外生成公共 `training.json`。直接调用 `make_algorithm("vdn").train(config, out)` 也能获得模型路径。这里是 Python 模块 API；以后网页后端可将其放进后台训练任务，再提供 HTTP 接口。
+`run_training` 会通过注册表调用 `VDNAlgorithm.train`，并额外生成公共 `training.json`。直接调用 `make_algorithm("vdn").train(config, out)` 也能获得模型路径。
+
+新版仓库的统一 SDK 也可管理训练任务、模型和评估结果：
+
+```python
+from teamwork.api import AlgorithmAPI, TrainingRequest
+
+with AlgorithmAPI("runs/vdn_sdk") as api:
+    record = api.train(TrainingRequest("vdn", steps=512), timeout=120)
+    evaluation = api.evaluate(record["run_id"], {"episodes": 5})
+```
+
+`api.submit_training(...)` 提交后台任务后，可用 `api.status(run_id)` 查询进度；VDN 按 `log_frequency` 和最终步数输出进度。SDK 的 `parameters` 接受目录中列出的数值超参数；`team_reward` 等字符串选项使用算法默认值，需要调整时使用上面的完整配置调用。
+
+完整配置的种子范围为 `0` 到 `2**32 - 1`，设备支持 `cpu` 或本机可用的 `cuda`／`cuda:N`，数值超参数不接受布尔值或数字字符串。`Policy.act` 会拒绝非有限值和维度不匹配的局部观测。
 
 ## 训练原理与执行信息
 

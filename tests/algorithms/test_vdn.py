@@ -215,14 +215,44 @@ def test_vdn_rejects_adversarial_tag(tmp_path):
         {"update_frequency": 0},
         {"gamma": float("nan")},
         {"team_reward": "individual"},
+        {"lr": True},
+        {"lr": "0.0003"},
+        {"seed": 2**32},
+        {"device": "meta"},
+        {"device": "cuda:9999"},
+        {"env_kwargs": []},
+        {"env_kwargs": {1: 2}},
+        {"metadata": {"invalid": object()}},
+        {"metadata": {"invalid": float("nan")}},
+        {"train_team": "predators"},
+        {"train_opponent": "rule"},
     ],
 )
 def test_vdn_rejects_invalid_configs_without_creating_an_experiment(tmp_path, override):
     config = {"env": "spread", "seed": 0, "total_steps": 8, "batch_size": 4, **override}
     out = tmp_path / "invalid"
-    with pytest.raises(ValueError):
+    with pytest.raises((ValueError, TypeError)):
         train(config, out)
     assert not out.exists()
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        {"b": [float("nan")]},
+        {"b": [float("inf")]},
+        {"b": [[0.0]]},
+        {"b": [0.0, 0.0]},
+        {"b": ["invalid"]},
+        {"unknown": [0.0]},
+    ],
+)
+def test_vdn_validates_all_local_inputs_before_sampling(invalid):
+    policy = VDNPolicy({agent: nn.Linear(1, 2) for agent in ("a", "b")})
+    rng = torch.get_rng_state().clone()
+    with pytest.raises(ValueError, match="observation|agent"):
+        policy.act({"a": [0.0], **invalid}, deterministic=False)
+    torch.testing.assert_close(torch.get_rng_state(), rng, rtol=0, atol=0)
 
 
 @pytest.mark.parametrize("environment,package", [("lbf", "lbforaging"), ("rware", "rware")])

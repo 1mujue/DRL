@@ -240,6 +240,18 @@ def test_mat_dec_trains_updates_saves_loads_and_reproduces(tmp_path, monkeypatch
         {"gamma": float("nan")},
         {"share_actor": "false"},
         {"team_reward": "individual"},
+        {"clip": 1.0},
+        {"lr": True},
+        {"lr": "0.0003"},
+        {"seed": 2**32},
+        {"device": "meta"},
+        {"device": "cuda:9999"},
+        {"env_kwargs": []},
+        {"env_kwargs": {1: 2}},
+        {"metadata": {"invalid": object()}},
+        {"metadata": {"invalid": float("nan")}},
+        {"train_team": "predators"},
+        {"train_opponent": "rule"},
     ],
 )
 def test_mat_dec_rejects_invalid_configs_without_creating_experiment(tmp_path, override):
@@ -247,6 +259,25 @@ def test_mat_dec_rejects_invalid_configs_without_creating_experiment(tmp_path, o
     with pytest.raises((ValueError, TypeError)):
         train({"env": "spread", "seed": 0, "total_steps": 8, **override}, out)
     assert not out.exists()
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        {"b": [float("nan"), 0.0, 0.0]},
+        {"b": [float("inf"), 0.0, 0.0]},
+        {"b": [[0.0, 0.0, 0.0]]},
+        {"b": [0.0]},
+        {"b": ["invalid", 0.0, 0.0]},
+        {"unknown": [0.0, 0.0, 0.0]},
+    ],
+)
+def test_mat_dec_validates_all_local_inputs_before_sampling(invalid):
+    policy = MATDecPolicy(MATDecModel(_spec(), embedding_dim=8))
+    rng = torch.get_rng_state().clone()
+    with pytest.raises(ValueError, match="observation|agent"):
+        policy.act({"a": [0.0, 0.0, 0.0], **invalid}, deterministic=False)
+    torch.testing.assert_close(torch.get_rng_state(), rng, rtol=0, atol=0)
 
 
 @pytest.mark.parametrize("environment,package", [("lbf", "lbforaging"), ("rware", "rware")])
