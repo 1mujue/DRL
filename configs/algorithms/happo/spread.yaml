@@ -1,0 +1,30 @@
+# 与 mappo/spread.yaml 对齐：同环境、同预算、同折扣、同 mean 团队奖励。
+algorithm: happo
+env: spread
+env_kwargs:
+  N: 3
+  local_ratio: 0.5
+  max_cycles: 50
+seed: 0
+device: cpu
+total_steps: 100000
+reward_aggregation: mean
+gamma: 0.99
+checkpoint_interval: 10000
+
+share_policy: false
+actor_order:
+hidden_size: 64
+hidden_layers: 2
+feature_normalization: true
+value_normalization: true
+rollout_steps: 256
+batch_size: 64
+epochs: 4
+actor_lr: 0.0003
+critic_lr: 0.0003
+gae_lambda: 0.95
+clip: 0.2
+value_clip: 0.2
+entropy_coef: 0.01
+max_grad_norm: 0.5

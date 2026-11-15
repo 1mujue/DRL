@@ -2,6 +2,8 @@
 
 from .base import Algorithm, Policy
 from .coma.algorithm import COMAAlgorithm
+from .happo.algorithm import HAPPOAlgorithm
+from .hasac.algorithm import HASACAlgorithm
 from .iql.algorithm import IQLAlgorithm
 from .maac.algorithm import MAACAlgorithm
 from .mappo.algorithm import MAPPOAlgorithm
@@ -38,6 +40,8 @@ def make_algorithm(name) -> Algorithm:
 
 register_algorithm("mappo_ff", MAPPOAlgorithm)
 register_algorithm("qmix", QMIXAlgorithm)
+register_algorithm("happo", HAPPOAlgorithm)
+register_algorithm("hasac_discrete", HASACAlgorithm)
 
 
 __all__ = ["Algorithm", "Policy", "available_algorithms", "make_algorithm", "register_algorithm"]
