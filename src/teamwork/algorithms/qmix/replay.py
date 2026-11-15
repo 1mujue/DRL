@@ -7,10 +7,11 @@ import torch
 
 
 class EpisodeReplay:
-    def __init__(self, spec, capacity, seed):
+    def __init__(self, spec, capacity, seed, *, use_action_availability=False):
         if isinstance(capacity, bool) or not isinstance(capacity, int) or capacity < 1:
             raise ValueError("Replay capacity must be a positive episode count")
         self.spec = spec
+        self.use_action_availability = use_action_availability
         self.episodes = deque(maxlen=capacity)
         self.rng = np.random.default_rng(seed)
 
@@ -43,6 +44,16 @@ class EpisodeReplay:
         for key in shapes:
             dtype = np.int64 if key == "actions" else np.float32
             copied[key] = np.array(episode[key], dtype=dtype, copy=True)
+        if self.use_action_availability:
+            availability = np.asarray(episode["available_actions"])
+            shape = (length + 1, n_agents, max(self.spec.action_counts))
+            if availability.shape != shape or availability.dtype != np.bool_:
+                raise ValueError("Replay availability requires a boolean mask for every observation")
+            in_space = np.arange(shape[-1])[None, :] < np.asarray(self.spec.action_counts)[:, None]
+            picked = np.take_along_axis(availability[:-1], actions[..., None], axis=-1)
+            if (availability & ~in_space).any() or not picked.all() or not availability.any(axis=-1).all():
+                raise ValueError("Replay contains missing or invalid available actions")
+            copied["available_actions"] = availability.copy()
         self.episodes.append(copied)
 
     def sample(self, batch_size, device="cpu"):
@@ -63,6 +74,12 @@ class EpisodeReplay:
             "truncated": np.zeros((batch_size, max_length), np.float32),
             "filled": np.zeros((batch_size, max_length), np.float32),
         }
+        if self.use_action_availability:
+            shape = (batch_size, max_length + 1, n_agents, max(self.spec.action_counts))
+            availability = np.zeros(shape, dtype=np.bool_)
+            # 填充步无损失，但仍需保留一个有限的局部最大 Q。
+            availability[..., 0] = True
+            result["available_actions"] = availability
         for index, episode in enumerate(chosen):
             length = len(episode["actions"])
             for key, values in episode.items():

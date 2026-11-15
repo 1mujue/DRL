@@ -1,10 +1,12 @@
 # 多智能体强化学习算法对比
 
 研究：**同场景比较算法，同算法跨场景验证。** 每人认领至少2个DRL算法，共用环境和固定指标。
-目前已注册 IPPO、DQN-based IQL、集中 critic PPO 基线、前馈 MAPPO、QMIX、COMA 和 MAAC；调用名与场景配置见下表。候选方法的研究方向见 [算法清单与认领](docs/ALGORITHMS.md)，实际接入情况以本表和注册表为准。
+目前已注册 IPPO、DQN-based IQL、集中 critic PPO 基线、前馈 MAPPO、QMIX、COMA、MAAC、QTRAN-base 和 QPLEX；调用名与场景配置见下表。候选方法的研究方向见 [算法清单与认领](docs/ALGORITHMS.md)，实际接入情况以本表和注册表为准。
 
 IPPO/IQL 的方法说明、四场景批量实验和 Tag 固定对手训练见 [IPPO 与 IQL](docs/IPPO_IQL.md)。
 供业务后端调用的训练任务、模型推理和结果查询 API 见 [算法接入交付](docs/API_INTEGRATION.md)。
+
+[QTRAN 和 QPLEX](docs/QTRAN_QPLEX.md)包含算法实现说明和逐步测试命令。
 
 ## 算法与场景配置
 
@@ -20,8 +22,8 @@ IPPO/IQL 的方法说明、四场景批量实验和 Tag 固定对手训练见 [I
 | VDN | | | | | | |
 | COMA | `coma` | [默认配置](configs/algorithms/coma.yaml) | | | | `make_algorithm("coma")` |
 | MAAC | `maac` | [默认配置](configs/algorithms/maac.yaml) | | | | `make_algorithm("maac")` |
-| QTRAN | | | | | | |
-| QPLEX | | | | | | |
+| QTRAN | `qtran` | [默认配置](configs/algorithms/qtran.yaml) | | `--env lbf` | `--env rware` | `make_algorithm("qtran")` |
+| QPLEX | `qplex` | [默认配置](configs/algorithms/qplex.yaml) | | `--env lbf` | `--env rware` | `make_algorithm("qplex")` |
 | HAPPO（异构 actor，顺序更新） | `happo` | [3 agent](configs/algorithms/happo/spread.yaml) | | [全场视野](configs/algorithms/happo/lbf.yaml)、[局部视野](configs/algorithms/happo/lbf_partial.yaml) | [2 agent](configs/algorithms/happo/rware.yaml) | `make_algorithm("happo")` |
 | HASAC（离散，软优势分解） | `hasac_discrete` | [3 agent](configs/algorithms/hasac/spread.yaml) | | [全场视野](configs/algorithms/hasac/lbf.yaml)、[局部视野](configs/algorithms/hasac/lbf_partial.yaml) | [2 agent](configs/algorithms/hasac/rware.yaml) | `make_algorithm("hasac_discrete")` |
 | MAT / MAT-Dec | | | | | | |
