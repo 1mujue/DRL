@@ -59,7 +59,7 @@ def test_bad_evaluation_request(payload):
 
 def test_catalog_and_requests_return_independent_data():
     info = catalog()
-    assert {a["id"] for a in info["algorithms"]} == {"ippo", "iql"}
+    assert {a["id"] for a in info["algorithms"]} == {"ippo", "iql", "happo", "hasac_discrete"}
     assert {e["id"] for e in info["environments"]} == {"spread", "tag", "lbf", "rware"}
     info["algorithms"][0]["defaults"]["lr"] = -1
     assert catalog()["algorithms"][0]["defaults"]["lr"] > 0

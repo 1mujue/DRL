@@ -83,7 +83,7 @@ with AlgorithmAPI("runs/backend_algorithms", max_concurrent=1) as api:
 
 | 字段 | 默认值 | 规则 |
 |---|---|---|
-| `algorithm` | 必填 | `ippo` 或 `iql` |
+| `algorithm` | 必填 | `teamwork.api.catalog.ALGORITHMS` 中的算法名，当前为 `ippo`、`iql`、`happo`、`hasac_discrete` |
 | `env` | `spread` | `spread`、`tag`、`lbf`、`rware` |
 | `steps` | `100000` | 正整数；联合环境交互步数 |
 | `seed` | `0` | 0 至 2³²−1 的整数 |

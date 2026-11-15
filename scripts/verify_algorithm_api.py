@@ -11,6 +11,7 @@ import torch
 
 from teamwork.algorithms.baselines import baseline_actions
 from teamwork.api import AlgorithmAPI, AlgorithmAPIError, TrainingRequest
+from teamwork.api.catalog import ALGORITHMS
 from teamwork.api.storage import write_json
 from teamwork.environments.registry import make_env
 
@@ -53,6 +54,7 @@ def main():
     parser.add_argument("--episodes", type=int, default=10)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--envs", nargs="+", choices=tuple(METRICS), default=list(METRICS))
+    parser.add_argument("--algorithms", nargs="+", choices=tuple(ALGORITHMS), default=["ippo", "iql"])
     args = parser.parse_args()
     if args.steps < 1000 or args.episodes < 1 or args.seed < 0:
         parser.error("Use at least 1000 training steps, positive episodes and nonnegative seed")
@@ -79,7 +81,7 @@ def main():
         write_json(args.out / "catalog.json", api.catalog())
         for environment in args.envs:
             references = []
-            for algorithm in ("ippo", "iql"):
+            for algorithm in args.algorithms:
                 tag = {"team": "predators", "opponent": "rule"} if environment == "tag" else {}
                 request = TrainingRequest(
                     algorithm, environment, steps=args.steps, seed=args.seed, **tag
