@@ -10,6 +10,7 @@ from torch.nn import functional as F
 
 from ...environments.base import EnvironmentSpec
 from ..base import Algorithm, Policy
+from .availability import lbf_action_availability
 from .networks import LocalQController, pack_observations
 
 
@@ -39,8 +40,9 @@ def validate_epsilon(epsilon):
 
 
 class QMIXPolicy(Policy):
-    def __init__(self, controller, evaluation_epsilon=0.05):
+    def __init__(self, controller, evaluation_epsilon=0.05, *, action_availability=None):
         self.controller = controller
+        self.action_availability = action_availability
         self.evaluation_epsilon = validate_epsilon(evaluation_epsilon)
         self.reset()
 
@@ -55,18 +57,24 @@ class QMIXPolicy(Policy):
         return self.sample_actions(observations, epsilon, np.random)
 
     @torch.no_grad()
-    def sample_actions(self, observations, epsilon, rng):
+    def sample_actions(self, observations, epsilon, rng, *, available_actions=None):
         epsilon = validate_epsilon(epsilon)
+        if available_actions is None and self.action_availability is not None:
+            available_actions = self.action_availability()
+        mask = None
+        if available_actions is not None:
+            mask = torch.as_tensor(available_actions, device=self.hidden.device, dtype=torch.bool)
         packed = torch.as_tensor(
             pack_observations(observations, self.controller.spec),
             device=self.hidden.device,
         ).unsqueeze(0)
         values, self.hidden = self.controller(packed, self.previous_actions, self.hidden)
-        actions = self.controller.greedy_actions(values)[0].cpu().numpy().copy()
+        actions = self.controller.greedy_actions(values, mask)[0].cpu().numpy().copy()
         if epsilon > 0:
             for index, count in enumerate(self.controller.spec.action_counts):
                 if rng.random() < epsilon:
-                    actions[index] = rng.choice(count)
+                    choices = count if available_actions is None else np.flatnonzero(available_actions[index])
+                    actions[index] = rng.choice(choices)
         action_tensor = torch.as_tensor(actions, device=self.hidden.device)
         self.previous_actions = F.one_hot(
             action_tensor, self.controller.max_actions
@@ -104,4 +112,7 @@ class QMIXAlgorithm(Algorithm):
         controller = LocalQController(spec, data["config"]).to(device)
         controller.load_state_dict(data["controller"])
         controller.eval()
-        return QMIXPolicy(controller, data["config"]["evaluation_epsilon"])
+        return QMIXPolicy(
+            controller, data["config"]["evaluation_epsilon"],
+            action_availability=lbf_action_availability(data["config"], env, spec),
+        )

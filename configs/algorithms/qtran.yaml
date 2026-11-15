@@ -1,0 +1,12 @@
+# QTRAN-base。公共训练循环以联合环境步为预算，以回合为回放单位。
+env: spread
+algorithm: qtran
+seed: 0
+device: cpu
+total_steps: 100000
+reward_aggregation: mean
+mixing_size: 64
+opt_loss_weight: 1.0
+nopt_loss_weight: 1.0
+batch_size: 16
+learning_starts_episodes: 16

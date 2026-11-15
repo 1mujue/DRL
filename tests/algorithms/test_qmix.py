@@ -94,6 +94,29 @@ def test_local_controller_keeps_agents_separate_and_masks_padded_actions(use_rnn
         assert 0 <= actions["a"] < 2 and 0 <= actions["b"] < 3
 
 
+def test_dynamic_action_masks_apply_to_policy_and_replay_padding():
+    spec = EnvironmentSpec(("a", "b"), (2, 2), (3, 3), 4)
+    controller = LocalQController(spec, config_for())
+    observations = dict.fromkeys(spec.agents, np.zeros(2, dtype=np.float32))
+    available = np.array([[False, True, False], [False, False, True]])
+    policy = QMIXPolicy(controller, action_availability=lambda: available)
+    assert policy.act(observations) == {"a": 1, "b": 2}
+    assert policy.sample_actions(observations, 1.0, np.random.default_rng(2)) == {"a": 1, "b": 2}
+
+    replay = EpisodeReplay(spec, capacity=2, seed=2, use_action_availability=True)
+    for length in (1, 3):
+        episode = episode_for(spec, length, truncated=True)
+        episode["actions"][:] = [1, 2]
+        episode["available_actions"] = np.broadcast_to(available, (length + 1, *available.shape))
+        replay.add(episode)
+
+    batch = replay.sample(2)
+    short = int(batch["filled"].sum(dim=1).argmin())
+    torch.testing.assert_close(batch["available_actions"][short, 1], torch.from_numpy(available))
+    assert batch["available_actions"][short, 2:, :, 0].all()
+    assert not batch["available_actions"][short, 2:, :, 1:].any()
+
+
 def test_recurrent_policy_and_replay_unroll_have_the_same_action_history():
     torch.manual_seed(5)
     spec = EnvironmentSpec(("a", "b"), (2, 2), (3, 3), 4)
