@@ -1,0 +1,35 @@
+# HASAC 离散适配起点：三智能体目标覆盖。
+# 与 qmix/spread.yaml 同为离策略、同环境、同预算、同 mean 团队奖励，仅算法不同。
+algorithm: hasac_discrete
+env: spread
+env_kwargs:
+  N: 3
+  local_ratio: 0.5
+  max_cycles: 50
+seed: 0
+device: cpu
+total_steps: 100000
+reward_aggregation: mean
+gamma: 0.99
+checkpoint_interval: 10000
+
+# 本实现是离散 categorical 策略；不是原论文的连续高斯版本。
+policy_family: categorical
+actor_order:
+hidden_size: 64
+hidden_layers: 2
+feature_normalization: true
+actor_output_gain: 0.01
+actor_lr: 0.0003
+critic_lr: 0.0003
+alpha_lr: 0.0003
+alpha_start: 0.2
+learn_alpha: true
+target_entropy_scale: 0.98
+tau: 0.005
+max_grad_norm: 10.0
+
+replay_capacity: 256
+batch_size: 16
+learning_starts_episodes: 16
+updates_per_episode: 1

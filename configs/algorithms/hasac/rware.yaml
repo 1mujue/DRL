@@ -1,0 +1,36 @@
+# 长回合仓储：回放与 batch 按回合计，每回合结束后做多次更新。
+# 本配置仅是可运行起点；部分可观测、稀疏奖励仍需正式训练验证。
+algorithm: hasac_discrete
+env: rware
+env_kwargs:
+  id: rware-tiny-2ag-v2
+  sensor_range: 1
+  max_steps: 500
+  reward_type: INDIVIDUAL
+seed: 0
+device: cpu
+total_steps: 100000
+reward_aggregation: mean
+gamma: 0.99
+checkpoint_interval: 10000
+
+policy_family: categorical
+actor_order:
+hidden_size: 64
+hidden_layers: 2
+feature_normalization: true
+actor_output_gain: 0.01
+actor_lr: 0.0003
+critic_lr: 0.0003
+alpha_lr: 0.0003
+alpha_start: 0.2
+learn_alpha: true
+target_entropy_scale: 0.98
+tau: 0.005
+max_grad_norm: 10.0
+
+# 500 步一回合，回放按回合容量计，避免单回合样本被稀释。
+replay_capacity: 128
+batch_size: 8
+learning_starts_episodes: 8
+updates_per_episode: 4

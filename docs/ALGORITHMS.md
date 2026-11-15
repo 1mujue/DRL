@@ -1,6 +1,7 @@
 # 算法认领清单
 
 每人认领 1–3 个，先完成 1 个主方法，其余作为扩展。难度是针对本项目的工程估计。
+
 已接入的方法及配置见 [README](../README.md)。QTRAN-base 和 QPLEX 的实现与测试步骤见 [方法说明](QTRAN_QPLEX.md)。
 IPPO/IQL 的实现、配置和统一实验入口见 [方法与实验说明](IPPO_IQL.md)。
 
