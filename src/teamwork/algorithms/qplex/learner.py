@@ -14,6 +14,7 @@ class DuplexDuelingMixer(nn.Module):
         self.n_actions = max(spec.action_counts)
         heads = config["attention_heads"]
         self.heads = heads
+        self.gradient_mode = config.get("gradient_mode", "dueling")
         width = config["hypernet_size"]
         joint_action_size = self.n_agents * self.n_actions
 
@@ -31,7 +32,6 @@ class DuplexDuelingMixer(nn.Module):
         selected = local_q.gather(-1, actions.unsqueeze(-1)).squeeze(-1)
         local_value = local_q.masked_fill(~action_mask, -torch.inf).max(dim=-1).values
         scale = F.softplus(self.scale(states)) + 1e-6
-        value = scale * local_value + self.bias(states)
         advantage = scale * (selected - local_value)
 
         joint_action = F.one_hot(actions, self.n_actions).flatten(-2).to(states.dtype)
@@ -42,11 +42,39 @@ class DuplexDuelingMixer(nn.Module):
             self.actions(torch.cat((states, joint_action), dim=-1)).reshape(shape).sigmoid()
         )
         importance = (keys * agent_gate * action_gate).sum(dim=-2) + 1e-6
-        # 贪心动作的优势为 0，其它动作的优势非正。正权重保持 IGM。
+        bias = self.bias(states)
+        if self.gradient_mode == "dmaq":
+            # 前向可由 Q_max + λA 改写为 Q_chosen + (λ-1)A。
+            # DMAQ 对缩放后的 A 停止梯度，λ 的梯度仍由优势项提供。
+            value = scale * selected + bias
+            return (value + (importance - 1) * advantage.detach()).sum(dim=-1)
+
+        value = scale * local_value + bias
         return (value + importance * advantage).sum(dim=-1)
 
 
+def successful_action_loss(values, actions, mask, batch):
+    """Imitate the actions in successful episodes, weighting collection and travel equally."""
+    valid = batch["filled"].bool()
+    collected = valid & batch["terminated"].bool() & (batch["rewards"] > 0)
+    if not collected.any():
+        return values.new_zeros(())
+    travel = valid & collected.any(dim=1, keepdim=True) & ~collected
+    log_probs = F.log_softmax(values.masked_fill(~mask, -torch.inf), dim=-1)
+    nll = -log_probs.gather(-1, actions.unsqueeze(-1)).squeeze(-1)
+    loss = nll[collected].mean()
+    if travel.any():
+        loss = loss + nll[travel].mean()
+    return loss
+
+
 class QPLEXLearner(ValueDecompositionLearner):
+    def __init__(self, spec, config, device):
+        super().__init__(spec, config, device)
+        self.successful_action_loss_weight = config.get("successful_action_loss_weight", 0.0)
+        if self.successful_action_loss_weight:
+            self.extra_metrics = ("behavior_cloning_loss",)
+
     def build_mixer(self, spec, config):
         return DuplexDuelingMixer(spec, config)
 
@@ -66,4 +94,10 @@ class QPLEXLearner(ValueDecompositionLearner):
                 batch["rewards"], batch["terminated"], next_total, self.config["gamma"]
             )
         loss = masked_td_loss(total, targets, batch["filled"])
+        if self.successful_action_loss_weight:
+            imitation_loss = successful_action_loss(values[:, :-1], actions, current_mask, batch)
+            return self.optimize(
+                loss + self.successful_action_loss_weight * imitation_loss,
+                total, targets, batch["filled"], behavior_cloning_loss=float(imitation_loss.detach()),
+            )
         return self.optimize(loss, total, targets, batch["filled"])
