@@ -71,7 +71,7 @@ class TrainingRequest(Request):
     def config(self):
         if not isinstance(self.algorithm, str) or self.algorithm not in ALGORITHMS:
             raise invalid("algorithm", "Choose ippo or iql")
-        if not isinstance(self.env, str) or self.env not in available_environments():
+        if not isinstance(self.env, str) or self.env not in available_environments(action_kind="discrete"):
             raise invalid("env", f"Unknown environment: {self.env!r}")
         if self.algorithm in {"vdn", "mat_dec"} and self.env == "tag":
             raise invalid("env", f"{self.algorithm} requires a cooperative environment")

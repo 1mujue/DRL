@@ -7,12 +7,19 @@ from pathlib import Path
 import torch
 import yaml
 
+from .algorithms.baselines import SCRIPTED_HANDOVER_POLICY, SCRIPTED_LIFT_POLICIES
 from .algorithms.registry import available_algorithms
 from .environments.registry import available_environments
 from .evaluation.compare import compare_results
 from .evaluation.evaluator import evaluate, save_result
+from .evaluation.lift_timing import LIFT_TIMING_MODES
 from .evaluation.metrics import protocol_description, resolved_env_kwargs
-from .evaluation.plots import plot_comparison, plot_training_curve
+from .evaluation.plots import (
+    plot_comparison,
+    plot_handover_trace,
+    plot_lift_trace,
+    plot_training_curve,
+)
 from .experiments.runner import run_training
 
 
@@ -39,18 +46,38 @@ def main():
     tr.add_argument("--opponent", choices=["random", "rule"])
     ev = sub.add_parser("evaluate")
     ev.add_argument("--env", choices=available_environments(), default="spread")
-    ev.add_argument("--policy", choices=["random", "rule"], default="random")
+    ev.add_argument(
+        "--policy",
+        choices=["random", "rule", *SCRIPTED_LIFT_POLICIES, SCRIPTED_HANDOVER_POLICY],
+        default="random",
+    )
     ev.add_argument("--checkpoint")
     ev.add_argument("--config", help="Use the same environment settings as a training YAML")
     ev.add_argument("--episodes", type=int, default=10)
     ev.add_argument("--seed", type=int, default=10000)
     ev.add_argument("--out", default="runs/evaluation.json")
     ev.add_argument("--gif")
+    ev.add_argument(
+        "--pot-mass-scale", type=float, help="Override pot mass only for TwoArmLift evaluation"
+    )
+    ev.add_argument(
+        "--record-trace", action="store_true", help="Include per-step robotic task facts in JSON"
+    )
+    ev.add_argument("--lift-timing", choices=LIFT_TIMING_MODES)
+    ev.add_argument("--gripper-delay-steps", type=int, default=0)
+    ev.add_argument("--delayed-arm", choices=("arm_0", "arm_1"), default="arm_1")
     ev.add_argument("--team", choices=["all", "predators", "prey"], default="all")
     ev.add_argument("--opponent", choices=["random", "rule"])
     plot = sub.add_parser("plot")
     plot.add_argument("--csv", required=True)
     plot.add_argument("--out", required=True)
+    for task in ("lift", "handover"):
+        trace_plot = sub.add_parser(
+            f"plot-{task}-trace", help=f"Plot one recorded robotic {task} episode"
+        )
+        trace_plot.add_argument("--evaluation", required=True)
+        trace_plot.add_argument("--seed", type=int)
+        trace_plot.add_argument("--out", required=True)
     args = parser.parse_args()
     if args.command == "metrics":
         print(json.dumps(protocol_description(args.env), ensure_ascii=False, indent=2))
@@ -62,7 +89,17 @@ def main():
         print(json.dumps(result, ensure_ascii=False, indent=2))
     elif args.command == "doctor":
         versions = {}
-        for package in ("mpe2", "pettingzoo", "gymnasium", "torch", "numpy", "lbforaging", "rware"):
+        for package in (
+            "mpe2",
+            "pettingzoo",
+            "gymnasium",
+            "torch",
+            "numpy",
+            "lbforaging",
+            "rware",
+            "robosuite",
+            "mujoco",
+        ):
             try:
                 versions[package] = importlib.metadata.version(package)
             except importlib.metadata.PackageNotFoundError:
@@ -86,7 +123,11 @@ def main():
         config_path = Path(args.config)
         config_text = config_path.read_text(encoding="utf-8")
         # SDK 把训练请求写成 JSON；用 yaml 解析会把 1e-05 这类指数写法误判成字符串。
-        config = json.loads(config_text) if config_path.suffix == ".json" else yaml.safe_load(config_text)
+        config = (
+            json.loads(config_text)
+            if config_path.suffix == ".json"
+            else yaml.safe_load(config_text)
+        )
         if args.env and args.env != config["env"]:
             # 换场景时不能把原场景的 N、障碍物等参数一起带过去。
             config["env"] = args.env
@@ -127,11 +168,20 @@ def main():
             args.gif,
             args.opponent,
             args.team,
+            pot_mass_scale=args.pot_mass_scale,
+            record_trace=args.record_trace,
+            lift_timing=args.lift_timing,
+            gripper_delay_steps=args.gripper_delay_steps,
+            delayed_arm=args.delayed_arm,
         )
         save_result(result, args.out)
         print(json.dumps({k: v for k, v in result.items() if k != "episodes"}, indent=2))
     elif args.command == "plot":
         plot_training_curve(args.csv, args.out)
+    elif args.command == "plot-lift-trace":
+        plot_lift_trace(args.evaluation, args.out, seed=args.seed)
+    elif args.command == "plot-handover-trace":
+        plot_handover_trace(args.evaluation, args.out, seed=args.seed)
 
 
 if __name__ == "__main__":

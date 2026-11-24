@@ -8,6 +8,10 @@ IPPO/IQL 的方法说明、四场景批量实验和 Tag 固定对手训练见 [I
 
 [QTRAN 和 QPLEX](docs/QTRAN_QPLEX.md)包含算法实现说明和逐步测试命令。
 
+## 连续动作环境
+
+MuJoCo 双 Panda 场景包括协作抬升和接力交接。双臂交接可在 WSL/Ubuntu 使用 Conda，通过一条命令复现示范采集、行为克隆和留出评估。[复现步骤](docs/ENVIRONMENT_DEVELOPMENT.md#mujoco-双臂交接)
+
 ## 算法与场景配置
 
 场景栏填写已有的配置入口；**空白表示尚未提供场景设计或配置，留给其他成员补充，不代表算法在理论上不适用。** 未接入的候选方法仅预留算法名，注册名、场景和调用栏保持空白，接入后再填写。
@@ -112,7 +116,7 @@ runs/                           # 自动生成的模型和结果，不提交 Git
 4. `tests/algorithms/test_<方法名>.py`：验证更新、保存加载和适用场景。
 
 改环境写 `environments/`；定义指标写 `evaluation/metrics.py`；改绘图写 `evaluation/plots.py`。
-当前只支持固定 agent、向量观测和离散动作；不要为尚未实现的方法建立空目录。
+当前环境使用固定智能体和向量观测，动作类型由场景注册表区分。
 
 ## 运行示例（以Windows为例）
 

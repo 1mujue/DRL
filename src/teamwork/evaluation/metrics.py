@@ -13,12 +13,16 @@ import numpy as np
 METRICS_VERSION = "1.0.0"
 COVERAGE_RADIUS = 0.1
 BOUNDARY_LIMIT = 1.0
+LIFT_HEIGHT_M = 0.10
+LIFT_TILT_DEGREES = 15.0
+LIFT_HOLD_STEPS = 10
 
 _DEFAULTS = {
     "spread": {"N": 3, "local_ratio": 0.5, "max_cycles": 50},
     "tag": {"num_good": 1, "num_adversaries": 3, "num_obstacles": 2, "max_cycles": 50},
     "lbf": {"id": "Foraging-8x8-2p-1f-coop-v3"},
     "rware": {"id": "rware-tiny-2ag-v2"},
+    "two_arm_lift": {"horizon": 200, "reward_shaping": True},
 }
 
 
@@ -106,6 +110,20 @@ _DEFINITIONS = {
             "higher",
             "100 × 交付次数 / 实际交互步数",
         ),
+    ),
+    "two_arm_lift": (
+        _RETURN,
+        metric(
+            "stable_dual_lift",
+            "boolean",
+            "higher",
+            "双臂握住各自把手、锅底高出桌面 >0.10 米且倾角 ≤15°，连续 ≥10 步",
+        ),
+        metric("first_stable_lift_step", "step", "lower", "首次完成稳定抬升的步数；失败为 null"),
+        metric(
+            "dual_grasp_fraction", "fraction", "higher", "两臂同时握住各自把手的步数 / 回合步数"
+        ),
+        metric("peak_lift_height_m", "m", "higher", "锅底相对桌面的最大高度"),
     ),
 }
 
@@ -231,7 +249,40 @@ class RWAREMetrics(MetricSuite):
         }
 
 
-_SUITES = {"spread": SpreadMetrics, "tag": TagMetrics, "lbf": LBFMetrics, "rware": RWAREMetrics}
+class TwoArmLiftMetrics(MetricSuite):
+    def _reset(self):
+        self.grasp_steps = 0
+        self.hold_steps = 0
+        self.first = None
+        self.peak = -float("inf")
+
+    def _update(self, snapshot):
+        grasp = all(snapshot["grasping"])
+        self.grasp_steps += grasp
+        height = snapshot["lift_height_m"]
+        self.peak = max(self.peak, height)
+        stable = grasp and height > LIFT_HEIGHT_M and snapshot["tilt_degrees"] <= LIFT_TILT_DEGREES
+        self.hold_steps = self.hold_steps + 1 if stable else 0
+        if self.first is None and self.hold_steps >= LIFT_HOLD_STEPS:
+            self.first = self.steps
+
+    def finish(self, returns, agents):
+        return {
+            "mean_agent_return": mean_return(returns),
+            "stable_dual_lift": float(self.first is not None),
+            "first_stable_lift_step": self.first,
+            "dual_grasp_fraction": self.grasp_steps / self.steps,
+            "peak_lift_height_m": self.peak,
+        }
+
+
+_SUITES = {
+    "spread": SpreadMetrics,
+    "tag": TagMetrics,
+    "lbf": LBFMetrics,
+    "rware": RWAREMetrics,
+    "two_arm_lift": TwoArmLiftMetrics,
+}
 
 
 def register_metrics(name, suite, definitions, default_env_kwargs):
@@ -241,6 +292,68 @@ def register_metrics(name, suite, definitions, default_env_kwargs):
     _SUITES[name] = suite
     _DEFINITIONS[name] = tuple(definitions)
     _DEFAULTS[name] = deepcopy(default_env_kwargs)
+
+
+HANDOVER_HEIGHT_M = 0.10
+HANDOVER_HOLD_STEPS = 10
+
+
+class TwoArmHandoverMetrics(MetricSuite):
+    def _reset(self):
+        self.giver_seen = self.initial["giver_grasp"] and not self.initial["receiver_grasp"]
+        self.overlap = False
+        self.shared_steps = self.receiver_steps = self.hold_steps = 0
+        self.first = None
+        self.peak_height = -float("inf")
+
+    def _update(self, snapshot):
+        giver, receiver = snapshot["giver_grasp"], snapshot["receiver_grasp"]
+        height = snapshot["object_height_m"]
+        self.peak_height = max(self.peak_height, height)
+        self.shared_steps += giver and receiver
+        self.receiver_steps += receiver
+        if giver and not receiver:
+            self.giver_seen = True
+            self.overlap = False
+        if giver and receiver and self.giver_seen:
+            self.overlap = True
+        if not giver and not receiver:
+            self.giver_seen = self.overlap = False
+
+        received = self.overlap and receiver and not giver and height > HANDOVER_HEIGHT_M
+        self.hold_steps = self.hold_steps + 1 if received else 0
+        if self.first is None and self.hold_steps >= HANDOVER_HOLD_STEPS:
+            self.first = self.steps
+
+    def finish(self, returns, agents):
+        return {
+            "mean_agent_return": mean_return(returns),
+            "handover_success": float(self.first is not None),
+            "first_handover_step": self.first,
+            "mutual_grasp_fraction": self.shared_steps / self.steps,
+            "receiver_grasp_fraction": self.receiver_steps / self.steps,
+            "peak_object_height_m": self.peak_height,
+        }
+
+
+register_metrics(
+    "two_arm_handover",
+    TwoArmHandoverMetrics,
+    (
+        _RETURN,
+        metric(
+            "handover_success",
+            "boolean",
+            "higher",
+            "先由递出臂握持，再共同抓握，接收臂单独保持高出桌面 >0.10 米至少 10 步",
+        ),
+        metric("first_handover_step", "step", "lower", "首次完成交接的步数；未完成为 null"),
+        metric("mutual_grasp_fraction", "fraction", "higher", "两臂同时抓握的步数 / 回合步数"),
+        metric("receiver_grasp_fraction", "fraction", "higher", "接收臂抓握手柄的步数 / 回合步数"),
+        metric("peak_object_height_m", "m", "higher", "物体相对桌面的最大任务高度"),
+    ),
+    {"horizon": 200, "reward_shaping": True, "scene_seed": 0},
+)
 
 
 def make_metrics(name) -> MetricSuite:

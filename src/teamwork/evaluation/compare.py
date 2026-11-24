@@ -20,9 +20,28 @@ def compare_results(paths, metric):
         )
     if not all(r["comparison_allowed"] for r in results):
         raise ValueError("Tag comparison requires the same fixed opponent and evaluated team")
+    lift_timing = results[0].get("lift_timing")
+    if any(result.get("lift_timing") != lift_timing for result in results):
+        raise ValueError("Lift timing modes differ; use the paired lift timing study")
     budgets = {r["training_steps"] for r in results if r["training_steps"] is not None}
     if len(budgets) > 1:
         raise ValueError("Training interaction budgets differ")
+    trained = [result for result in results if result["training_steps"] is not None]
+    training_env = trained[0].get("training_env_kwargs") if trained else None
+    if any(result.get("training_env_kwargs") != training_env for result in trained):
+        raise ValueError("Training environment differs or is missing")
+    initialization = trained[0].get("training_initialization") if trained else None
+    if any(result.get("training_initialization") != initialization for result in trained):
+        raise ValueError(
+            "Training initialization differs or is missing: match demonstration source, "
+            "demonstration budget, and initialization method"
+        )
+    if initialization and (
+        initialization["method"] == "checkpoint_warm_start"
+        and not initialization.get("checkpoint_sha256")
+        and len(trained) > 1
+    ):
+        raise ValueError("Warm-start checkpoint identity is missing")
     definitions = {d["name"]: d for d in results[0]["benchmark"]["protocol"]["metrics"]}
     if metric not in definitions:
         raise ValueError(f"Unknown metric {metric!r}; choose from {tuple(definitions)}")
@@ -47,8 +66,11 @@ def compare_results(paths, metric):
     return {
         "benchmark_id": results[0]["benchmark_id"],
         "env": results[0]["env"],
+        **({"lift_timing": lift_timing} if lift_timing is not None else {}),
         "metric": definitions[metric],
         "training_steps": next(iter(budgets), None),
+        "training_initialization": initialization,
+        "training_env_kwargs": training_env,
         "aggregation": "equal-weight model means; sample std over independent training seeds",
         "algorithms": algorithms,
     }

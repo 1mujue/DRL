@@ -108,7 +108,7 @@ def catalog():
             }
         )
     environments = []
-    for name in available_environments():
+    for name in available_environments(action_kind="discrete"):
         package = {"lbf": "lbforaging", "rware": "rware"}.get(name, "mpe2")
         environments.append(
             {

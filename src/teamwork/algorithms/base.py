@@ -13,12 +13,16 @@ class Policy(ABC):
         """每个测试回合调用一次；循环策略在此清空 hidden state。前馈策略无需实现。"""
 
     @abstractmethod
-    def act(self, observations: dict[str, np.ndarray], deterministic=True) -> dict[str, int]:
+    def act(
+        self, observations: dict[str, np.ndarray], deterministic=True
+    ) -> dict[str, int | np.ndarray]:
         """输入局部观测，返回受控 agent 动作；固定对手动作由公共评估器补全。"""
 
 
 class Algorithm(ABC):
     """每位成员实现一个或几个子类；算法拥有自己的训练循环。"""
+
+    action_kind = "discrete"
 
     @abstractmethod
     def train(self, config: dict, out: str | Path) -> Path:

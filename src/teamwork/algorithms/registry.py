@@ -2,6 +2,7 @@
 
 from .base import Algorithm, Policy
 from .coma.algorithm import COMAAlgorithm
+from .continuous_off_policy import VARIANTS, ContinuousOffPolicyAlgorithm
 from .happo.algorithm import HAPPOAlgorithm
 from .hasac.algorithm import HASACAlgorithm
 from .iql.algorithm import IQLAlgorithm
@@ -16,6 +17,10 @@ from .vdn.algorithm import VDNAlgorithm
 
 _FACTORIES = {
     "iql": IQLAlgorithm,
+    "ippo_continuous": lambda: PPOAlgorithm("ippo_continuous"),
+    "mappo_continuous": lambda: PPOAlgorithm("mappo_continuous"),
+    "happo_continuous": lambda: PPOAlgorithm("happo_continuous"),
+    "mat_dec_continuous": lambda: PPOAlgorithm("mat_dec_continuous"),
     "ippo": lambda: PPOAlgorithm("ippo"),
     "mappo": lambda: PPOAlgorithm("mappo"),  # 保留旧配置名；只是集中 critic PPO 基线。
     "coma": lambda: COMAAlgorithm(),
@@ -43,6 +48,11 @@ def make_algorithm(name) -> Algorithm:
         raise TypeError("Registered factory must return an Algorithm implementation")
     return algorithm
 
+
+for algorithm_name in VARIANTS:
+    register_algorithm(
+        algorithm_name, lambda name=algorithm_name: ContinuousOffPolicyAlgorithm(name)
+    )
 
 register_algorithm("mappo_ff", MAPPOAlgorithm)
 register_algorithm("qmix", QMIXAlgorithm)

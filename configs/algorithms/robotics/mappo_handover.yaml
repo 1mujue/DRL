@@ -1,0 +1,16 @@
+algorithm: mappo_continuous
+env: two_arm_handover
+env_kwargs:
+  horizon: 200
+  reward_shaping: true
+  scene_seed: 0
+seed: 0
+device: cpu
+total_steps: 100000
+rollout_steps: 256
+batch_size: 64
+epochs: 4
+lr: 0.0003
+gamma: 0.99
+gae_lambda: 0.95
+clip: 0.2
