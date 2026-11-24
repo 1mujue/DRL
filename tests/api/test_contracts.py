@@ -68,6 +68,8 @@ def test_catalog_and_requests_return_independent_data():
         "mat_dec",
     }
     assert {e["id"] for e in info["environments"]} == {"spread", "tag", "lbf", "rware"}
+    environments = {e["id"] for e in info["environments"]}
+    assert all(set(a["training_environments"]) <= environments for a in info["algorithms"])
     info["algorithms"][0]["defaults"]["lr"] = -1
     assert catalog()["algorithms"][0]["defaults"]["lr"] > 0
     request = TrainingRequest("ippo", parameters={"epochs": 2})

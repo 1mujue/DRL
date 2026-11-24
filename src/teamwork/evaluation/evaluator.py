@@ -114,6 +114,22 @@ def _training_conditions(config, env_kwargs):
     }
 
 
+def _algorithm_variant(config):
+    algorithm = config["algorithm"]
+    if algorithm not in {"qmix", "qtran", "qplex"}:
+        return None
+    variant = {
+        "replay_capacity": config.get("replay_capacity", 256),
+        "positive_replay_capacity": config.get("positive_replay_capacity", 0),
+        "positive_replay_samples": config.get("positive_replay_samples", 0),
+    }
+    if algorithm == "qplex":
+        variant["gradient_mode"] = config.get("gradient_mode", "dueling")
+        variant["lbf_demo_every"] = config.get("lbf_demo_every", 0)
+        variant["successful_action_loss_weight"] = config.get("successful_action_loss_weight", 0.0)
+    return variant
+
+
 def evaluate(
     name,
     policy="random",
@@ -278,6 +294,7 @@ def evaluate(
         "schema_version": 2,
         "env": name,
         "algorithm": data["config"]["algorithm"] if data else policy,
+        "algorithm_variant": _algorithm_variant(data["config"]) if data else None,
         "training_seed": data["config"]["seed"] if data else None,
         "training_steps": data.get("steps") if data else None,
         "training_setup": {

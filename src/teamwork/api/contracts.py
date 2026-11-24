@@ -72,7 +72,9 @@ class TrainingRequest(Request):
     def config(self):
         if not isinstance(self.algorithm, str) or self.algorithm not in ALGORITHMS:
             raise invalid("algorithm", f"Choose an SDK algorithm from {tuple(ALGORITHMS)}")
-        if not isinstance(self.env, str) or self.env not in available_environments(action_kind="discrete"):
+        if not isinstance(self.env, str) or self.env not in available_environments(
+            action_kind="discrete"
+        ):
             raise invalid("env", f"Unknown environment: {self.env!r}")
         positive_integer(self.steps, "steps")
         seed_value(self.seed)

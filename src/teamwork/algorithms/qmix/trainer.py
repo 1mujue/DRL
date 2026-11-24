@@ -52,6 +52,8 @@ DEFAULTS = {
     "reward_aggregation": "mean",
     "checkpoint_interval": 10000,
     "mask_unavailable_actions": False,
+    "positive_replay_capacity": 0,
+    "positive_replay_samples": 0,
 }
 
 
@@ -98,9 +100,24 @@ def resolve_config(config, *, algorithm="qmix", algorithm_defaults=None):
             or result[key] < 1
         ):
             raise ValueError(f"{key} must be a positive integer")
-    for key in ("seed", "checkpoint_interval"):
+    for key in (
+        "seed",
+        "checkpoint_interval",
+        "positive_replay_capacity",
+        "positive_replay_samples",
+    ):
         if isinstance(result[key], bool) or not isinstance(result[key], int) or result[key] < 0:
             raise ValueError(f"{key} must be a nonnegative integer")
+    positive_capacity = result["positive_replay_capacity"]
+    positive_samples = result["positive_replay_samples"]
+    if bool(positive_capacity) != bool(positive_samples):
+        raise ValueError("Set both positive replay settings, or leave both at zero")
+    if positive_samples > positive_capacity or positive_samples >= result["batch_size"]:
+        raise ValueError(
+            "positive_replay_samples must fit the archive and leave room for uniform samples"
+        )
+    if positive_samples and result["env"] != "lbf":
+        raise ValueError("Positive replay is only supported in LBF")
     if max(result["batch_size"], result["learning_starts_episodes"]) > result["replay_capacity"]:
         raise ValueError("Replay capacity must accommodate batch_size and learning_starts_episodes")
     for key in ("lr", "max_grad_norm", "optimizer_eps"):
@@ -128,10 +145,30 @@ def resolve_config(config, *, algorithm="qmix", algorithm_defaults=None):
         raise ValueError("mask_unavailable_actions is currently available only for LBF")
     if result["reward_aggregation"] not in {"mean", "sum", "shared"}:
         raise ValueError("reward_aggregation must be mean, sum or shared")
-    if algorithm == "qplex" and (
-        type(result["attention_heads"]) is not int or result["attention_heads"] < 1
-    ):
-        raise ValueError("attention_heads must be a positive integer")
+    if algorithm == "qplex":
+        if type(result["attention_heads"]) is not int or result["attention_heads"] < 1:
+            raise ValueError("attention_heads must be a positive integer")
+        result.setdefault("gradient_mode", "dueling")
+        if result["gradient_mode"] not in ("dueling", "dmaq"):
+            raise ValueError("gradient_mode must be dueling or dmaq")
+        demo_every = result.setdefault("lbf_demo_every", 0)
+        imitation_weight = result.setdefault("successful_action_loss_weight", 0.0)
+        if type(demo_every) is not int or demo_every < 0:
+            raise ValueError("lbf_demo_every must be a nonnegative integer")
+        if (
+            type(imitation_weight) not in (float, int)
+            or not math.isfinite(imitation_weight)
+            or imitation_weight < 0
+        ):
+            raise ValueError("successful_action_loss_weight must be finite and nonnegative")
+        if (demo_every or imitation_weight) and (
+            result["env"] != "lbf" or not result["mask_unavailable_actions"]
+        ):
+            raise ValueError("QPLEX demonstrations and action supervision require masked LBF")
+        if demo_every and result["env_kwargs"].get("id") != "Foraging-8x8-2p-1f-coop-v3":
+            raise ValueError(
+                "QPLEX demonstrations require the default two-player, one-food LBF task"
+            )
     if algorithm == "qtran":
         for key in ("opt_loss_weight", "nopt_loss_weight"):
             value = result[key]
@@ -170,7 +207,7 @@ def epsilon_at(steps, config):
 
 
 def training_contract(config, implementation="qmix_local_q_v1"):
-    return {
+    contract = {
         "algorithm": config["algorithm"],
         "implementation": implementation,
         "reward_aggregation": config["reward_aggregation"],
@@ -180,9 +217,17 @@ def training_contract(config, implementation="qmix_local_q_v1"):
         "target_update_unit": "learner_updates",
         "replay_unit": "episodes",
         "mask_unavailable_actions": config.get("mask_unavailable_actions", False),
+        "replay_capacity": config["replay_capacity"],
+        "positive_replay_capacity": config.get("positive_replay_capacity", 0),
+        "positive_replay_samples": config.get("positive_replay_samples", 0),
         "use_rnn": config["use_rnn"],
         "resume_supported": False,
     }
+    if config["algorithm"] == "qplex":
+        contract["gradient_mode"] = config.get("gradient_mode", "dueling")
+        contract["lbf_demo_every"] = config.get("lbf_demo_every", 0)
+        contract["successful_action_loss_weight"] = config.get("successful_action_loss_weight", 0.0)
+    return contract
 
 
 def save_checkpoint(path, learner, config, spec, steps, implementation="qmix_local_q_v1"):
@@ -271,7 +316,13 @@ def collect_and_train(
         config["replay_capacity"],
         config["seed"] + 1,
         use_action_availability=action_availability is not None,
+        positive_replay_capacity=config.get("positive_replay_capacity", 0),
+        positive_replay_samples=config.get("positive_replay_samples", 0),
     )
+    demo_every = config.get("lbf_demo_every", 0) if config["algorithm"] == "qplex" else 0
+    if demo_every:
+        from ..qplex.lbf_teacher import demo_actions
+
     rng = np.random.default_rng(config["seed"])
     policy = QMIXPolicy(learner.controller, config["evaluation_epsilon"])
     for index, agent in enumerate(spec.agents):
@@ -291,6 +342,8 @@ def collect_and_train(
         "valid_transitions",
         *learner.extra_metrics,
     ]
+    if replay.positive_replay_samples:
+        updates_fields.extend(("positive_replay_episodes", "positive_sampled_episodes"))
     with (
         (out / "episodes.csv").open("w", encoding="utf-8", newline="") as episode_file,
         (out / "updates.csv").open("w", encoding="utf-8", newline="") as update_file,
@@ -301,6 +354,7 @@ def collect_and_train(
         update_writer.writeheader()
         while steps < config["total_steps"]:
             policy.reset()
+            demonstration = demo_actions(env) if demo_every and episodes % demo_every == 0 else None
             trajectory = {
                 "observations": [pack_observations(observations, spec)],
                 "states": [environment_state(env, spec)],
@@ -316,12 +370,19 @@ def collect_and_train(
             returns = dict.fromkeys(spec.agents, 0.0)
             while steps < config["total_steps"]:
                 epsilon = epsilon_at(steps, config)
-                actions = policy.sample_actions(
-                    observations,
-                    epsilon,
-                    rng,
-                    available_actions=available_actions,
-                )
+                if demonstration is None:
+                    actions = policy.sample_actions(
+                        observations,
+                        epsilon,
+                        rng,
+                        available_actions=available_actions,
+                    )
+                else:
+                    actions = next(demonstration, None)
+                    if actions is None:
+                        raise ValueError(
+                            "LBF demonstration ended before the environment terminated"
+                        )
                 next_obs, rewards, terminated, truncated, _ = env.step(actions)
                 if set(terminated) != set(spec.agents) or set(truncated) != set(spec.agents):
                     raise ValueError(
@@ -365,9 +426,15 @@ def collect_and_train(
                         episode_file.flush()
                     if len(replay) >= max(config["batch_size"], config["learning_starts_episodes"]):
                         for _ in range(config["updates_per_episode"]):
-                            metrics = learner.train_batch(
-                                replay.sample(config["batch_size"], device)
-                            )
+                            batch = replay.sample(config["batch_size"], device)
+                            metrics = learner.train_batch(batch)
+                            if replay.positive_replay_samples:
+                                metrics["positive_replay_episodes"] = len(replay.positive_episodes)
+                                positive = (batch["rewards"] > 0).any(dim=1)
+                                completed = batch["terminated"].bool().any(dim=1)
+                                metrics["positive_sampled_episodes"] = int(
+                                    (positive & completed).sum()
+                                )
                             update_writer.writerow(
                                 {
                                     "update": learner.updates,

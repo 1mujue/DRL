@@ -71,6 +71,11 @@ def compare_results(paths, metric):
         grouped.setdefault(result["algorithm"], []).append(result)
     algorithms = {}
     for algorithm, group in grouped.items():
+        variant = group[0].get("algorithm_variant")
+        if any(r.get("algorithm_variant") != variant for r in group):
+            raise ValueError(
+                f"Algorithm variants differ for {algorithm}; compare each variant separately"
+            )
         seeds = [r["training_seed"] for r in group]
         if len(seeds) != len(set(seeds)):
             raise ValueError(f"Duplicate training seed for {algorithm}; do not count it twice")
@@ -78,6 +83,7 @@ def compare_results(paths, metric):
             raise ValueError("Metric is undefined for a run; choose an unconditional metric first")
         means = [r["summary"][metric]["mean"] for r in group]
         algorithms[algorithm] = {
+            "algorithm_variant": variant,
             "mean": float(np.mean(means)),
             "std_across_training_seeds": float(np.std(means, ddof=1)) if len(means) > 1 else None,
             "training_seeds": seeds,

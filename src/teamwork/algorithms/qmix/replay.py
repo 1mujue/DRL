@@ -7,10 +7,21 @@ import torch
 
 
 class EpisodeReplay:
-    def __init__(self, spec, capacity, seed, *, use_action_availability=False):
+    def __init__(
+        self,
+        spec,
+        capacity,
+        seed,
+        *,
+        use_action_availability=False,
+        positive_replay_capacity=0,
+        positive_replay_samples=0,
+    ):
         if isinstance(capacity, bool) or not isinstance(capacity, int) or capacity < 1:
             raise ValueError("Replay capacity must be a positive episode count")
         self.spec = spec
+        self.positive_episodes = deque(maxlen=positive_replay_capacity)
+        self.positive_replay_samples = positive_replay_samples
         self.use_action_availability = use_action_availability
         self.episodes = deque(maxlen=capacity)
         self.rng = np.random.default_rng(seed)
@@ -63,12 +74,32 @@ class EpisodeReplay:
                 raise ValueError("Replay contains missing or invalid available actions")
             copied["available_actions"] = availability.copy()
         self.episodes.append(copied)
+        if (
+            self.positive_episodes.maxlen
+            and copied["terminated"][-1]
+            and (copied["rewards"] > 0).any()
+        ):
+            self.positive_episodes.append(copied)
 
     def sample(self, batch_size, device="cpu"):
         if batch_size < 1 or batch_size > len(self):
             raise ValueError("Not enough replay episodes for this batch")
-        indices = self.rng.choice(len(self), size=batch_size, replace=False)
-        chosen = [self.episodes[index] for index in indices]
+        positive_count = min(
+            self.positive_replay_samples,
+            len(self.positive_episodes),
+            batch_size - 1,
+        )
+        chosen = []
+        recent = self.episodes
+        if positive_count:
+            indices = self.rng.choice(
+                len(self.positive_episodes), size=positive_count, replace=False
+            )
+            chosen = [self.positive_episodes[index] for index in indices]
+            selected = {id(episode) for episode in chosen}
+            recent = [episode for episode in self.episodes if id(episode) not in selected]
+        indices = self.rng.choice(len(recent), size=batch_size - positive_count, replace=False)
+        chosen.extend(recent[index] for index in indices)
         max_length = max(len(episode["actions"]) for episode in chosen)
         n_agents = len(self.spec.agents)
         result = {

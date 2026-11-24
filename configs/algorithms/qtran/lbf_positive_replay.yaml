@@ -1,0 +1,11 @@
+# LBF 对照使用动作屏蔽和成功回合保留。
+env: lbf
+algorithm: qtran
+seed: 0
+device: cpu
+total_steps: 100000
+reward_aggregation: mean
+mixing_size: 64
+mask_unavailable_actions: true
+positive_replay_capacity: 64
+positive_replay_samples: 2
