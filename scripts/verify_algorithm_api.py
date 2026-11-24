@@ -54,7 +54,9 @@ def main():
     parser.add_argument("--episodes", type=int, default=10)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--envs", nargs="+", choices=tuple(METRICS), default=list(METRICS))
-    parser.add_argument("--algorithms", nargs="+", choices=tuple(ALGORITHMS), default=["ippo", "iql"])
+    parser.add_argument(
+        "--algorithms", nargs="+", choices=tuple(ALGORITHMS), default=["ippo", "iql"]
+    )
     args = parser.parse_args()
     if args.steps < 1000 or args.episodes < 1 or args.seed < 0:
         parser.error("Use at least 1000 training steps, positive episodes and nonnegative seed")

@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from teamwork.evaluation.compare import compare_results
-from teamwork.evaluation.evaluator import evaluate, save_result
+from teamwork.evaluation.evaluator import _training_conditions, evaluate, save_result
 from teamwork.evaluation.metrics import (
     LBFMetrics,
     RWAREMetrics,
@@ -217,3 +217,27 @@ def test_general_comparison_rejects_mixing_lift_timing_treatments(tmp_path):
     second["lift_timing"] = {"mode": "mutual_grasp"}
     with pytest.raises(ValueError, match="Lift timing modes differ"):
         compare_results(write_results(tmp_path, first, second), "success")
+
+
+def test_compare_uses_effective_spread_reward_and_preserves_divisor(tmp_path):
+    settings = {"max_cycles": 2, "local_ratio": 0}
+    baseline = evaluate("spread", episodes=1, env_kwargs=settings)
+    rows = []
+    for algorithm in ("ippo", "qmix", "coma"):
+        result = deepcopy(baseline)
+        config = {"algorithm": algorithm, "env": "spread", "reward_scale": 1.0}
+        result.update(
+            algorithm=algorithm,
+            training_steps=100,
+            training_seed=0,
+            training_conditions=_training_conditions(config, settings),
+        )
+        rows.append(result)
+    report = compare_results(write_results(tmp_path, *rows), "success")
+    assert report["training_conditions"]["reward_aggregation"] == "shared"
+    assert rows[0]["training_conditions"]["configured_reward_aggregation"] == "individual"
+    assert rows[2]["training_conditions"]["configured_reward_aggregation"] == "first_agent"
+
+    rows[2]["training_conditions"]["reward_divisor"] = 10.0
+    with pytest.raises(ValueError, match="Training reward"):
+        compare_results(write_results(tmp_path, *rows), "success")

@@ -47,6 +47,7 @@ class ValueDecompositionAlgorithm(Algorithm):
         controller.load_state_dict(data["controller"])
         controller.eval()
         return QMIXPolicy(
-            controller, data["config"]["evaluation_epsilon"],
+            controller,
+            data["config"]["evaluation_epsilon"],
             action_availability=lbf_action_availability(data["config"], env, spec),
         )

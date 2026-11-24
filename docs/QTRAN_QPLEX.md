@@ -1,5 +1,7 @@
 # QTRAN-base 与 QPLEX
 
+## 方法
+
 两种方法共用 QMIX 的局部 Q 网络、回合回放和目标网络更新机制。各自的 `learner.py` 实现联合价值函数与损失，执行时只加载局部 Q 网络。默认使用带上一动作、agent ID 的共享 GRU 和 Double Q。
 
 - **QTRAN-base** 训练一个集中式联合 Q 和状态偏置。在局部贪心动作上约束等式，在采样动作上惩罚非最优约束的负残差。`updates.csv` 记录 `td_loss`、`opt_loss`、`nopt_loss`。参考 [QTRAN 论文](https://proceedings.mlr.press/v97/son19a.html)。
@@ -7,24 +9,19 @@
 
 默认合作场景是 Spread。用 `--env lbf` 或 `--env rware` 选择其他合作场景。训练按 `reward_aggregation: mean` 使用个体奖励均值，原始个体回报仍用于日志及公共评估。正式横向比较时核对各方法的奖励聚合方式。Tag 需另行实现阵营隔离与固定对手训练。当前检查点支持推理和公共评估。
 
-## LBF 动作屏蔽对照
+## 训练与评估
+
+### LBF 动作屏蔽对照
 
 可在算法 YAML 中加入 `mask_unavailable_actions: true`，然后使用 `--env lbf`。这个实验选项适用于 QTRAN、QPLEX 和 QMIX，默认关闭。启用后，探索、贪心动作、回放中的目标动作及 QPLEX 的局部最大 Q 都依据当前可执行动作。掩码取自 LBF 2.0 提供给每个玩家的可执行动作，仍由各自的局部 Q 选择动作。
 
 公共 `evaluate --checkpoint` 按保存的配置自动使用屏蔽。独立调用 `load_policy` 时需要提供该策略实际交互的 LBF 环境。报告实验时标明是否启用该选项，按同一环境配置、预算和种子做消融对照。
 
-## 一起测试
+## 验证与边界
 
-在 WSL 打开项目。先确认 Python 路径和 CPU 版 PyTorch，然后查看训练帮助里是否列出 `qtran`、`qplex`。
+按照 [安装指南](SETUP.md) 激活项目解释器，从仓库根目录运行。以下批量命令使用 Bash。
 
-```bash
-cd /home/mujue/proj/deepRL/DeepRL/teamwork
-conda activate deeprl-teamwork
-python -m teamwork.cli doctor
-python -m teamwork.cli train --help
-```
-
-确认后，在相同的 Spread 场景各训练 900 个联合步。每回合最多 50 步，默认需积累 16 个回合才开始更新，因此 900 步足以检查实际更新。使用新目录，重复运行时更换 `trial`。
+在相同的 Spread 场景各训练 900 个联合步。每回合最多 50 步，默认需积累 16 个回合才开始更新，因此 900 步足以检查实际更新。使用新目录，重复运行时更换 `trial`。
 
 ```bash
 mkdir -p runs

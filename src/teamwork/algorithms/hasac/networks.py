@@ -62,7 +62,8 @@ def pack_observations(observations, spec, device=None):
     reference = next(iter(validated.values()))
     packed = torch.zeros(
         (len(spec.agents), max(spec.observation_sizes)),
-        dtype=reference.dtype, device=reference.device,
+        dtype=reference.dtype,
+        device=reference.device,
     )
     for index, agent in enumerate(spec.agents):
         packed[index, : spec.observation_sizes[index]] = validated[agent]
@@ -123,8 +124,10 @@ class HASACModel(nn.Module):
         )
         alpha = config.get("alpha_start", 0.2)
         if (
-            isinstance(alpha, bool) or not isinstance(alpha, (int, float))
-            or not math.isfinite(alpha) or alpha <= 0
+            isinstance(alpha, bool)
+            or not isinstance(alpha, (int, float))
+            or not math.isfinite(alpha)
+            or alpha <= 0
         ):
             raise ValueError("HASAC alpha_start must be finite and positive")
         self.log_alphas = nn.ParameterDict(
@@ -136,9 +139,7 @@ class HASACModel(nn.Module):
 
     def joint_one_hot(self, actions):
         """[..., N] 动作索引 -> [..., sum(action_counts)] 联合动作 one-hot。"""
-        actions = torch.as_tensor(
-            actions, dtype=torch.long, device=self.action_offsets.device
-        )
+        actions = torch.as_tensor(actions, dtype=torch.long, device=self.action_offsets.device)
         counts = torch.as_tensor(
             self.spec.action_counts, dtype=torch.long, device=self.action_offsets.device
         )
@@ -146,9 +147,7 @@ class HASACModel(nn.Module):
             raise ValueError("HASAC joint action must name every agent exactly once")
         if actions.numel() and bool(((actions < 0) | (actions >= counts)).any()):
             raise ValueError("HASAC joint action contains an index outside its agent's space")
-        one_hot = F.one_hot(
-            self.action_offsets + actions, joint_action_size(self.spec)
-        ).float()
+        one_hot = F.one_hot(self.action_offsets + actions, joint_action_size(self.spec)).float()
         # [..., N, 全局动作宽度] -> [..., 全局动作宽度]：各 agent 的偏移互不重叠，
         # 求和得到整支队伍的一个联合动作向量。
         return one_hot.sum(dim=-2)
@@ -174,9 +173,7 @@ class HASACModel(nn.Module):
             (self.target_actors, self.actors),
             (self.target_critics, self.critics),
         ):
-            for target_parameter, source_parameter in zip(
-                target.parameters(), source.parameters()
-            ):
+            for target_parameter, source_parameter in zip(target.parameters(), source.parameters()):
                 target_parameter.mul_(1 - tau).add_(source_parameter, alpha=tau)
 
 

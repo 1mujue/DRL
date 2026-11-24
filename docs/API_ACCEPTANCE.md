@@ -43,7 +43,7 @@ Tag 固定追捕阵营，对手为规则策略。
 - SDK wheel 与交付 ZIP 保存在 `runs/api_delivery_20261112/` 及同级交付文件中，均作为生成产物保存。
 
 ```bash
-.venv/bin/python scripts/verify_algorithm_api.py --out runs/api_acceptance_new --steps 100000 --episodes 10
+python scripts/verify_algorithm_api.py --out runs/api_acceptance_new --steps 100000 --episodes 10
 ```
 
 接口合同与组长调用示例见 [API_INTEGRATION](API_INTEGRATION.md)。

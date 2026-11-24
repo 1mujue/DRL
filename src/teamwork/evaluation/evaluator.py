@@ -12,6 +12,7 @@ import torch
 
 from ..algorithms.baselines import SCRIPTED_HANDOVER_POLICY, baseline_actions, make_baseline_policy
 from ..algorithms.registry import make_algorithm
+from ..algorithms.training import validate_training_scope
 from ..environments.registry import environment_registration, make_env
 from ..experiments.runner import seed_all
 from .lift_timing import GRASP_CONFIRMATION_STEPS, LiftTimingTrial
@@ -76,6 +77,43 @@ def _training_initialization(data):
     return {"method": "from_scratch"}
 
 
+def _training_conditions(config, env_kwargs):
+    """从已保存配置还原训练奖励模式，包括旧版 checkpoint 的默认值。"""
+    algorithm = config["algorithm"]
+    reward_divisor = 1.0
+    if algorithm in {"ippo", "iql", "mappo"}:
+        reward = "individual"
+    elif algorithm in {"coma", "maac"}:
+        reward = "first_agent"
+        reward_divisor = config.get("reward_scale", 10.0)
+    elif algorithm in {"vdn", "mat_dec"}:
+        reward = config.get("team_reward", "mean")
+    elif algorithm == "mappo_ff":
+        reward = config.get("reward_aggregation", "individual")
+    elif algorithm in {"qmix", "qtran", "qplex", "happo", "hasac_discrete"}:
+        reward = config.get("reward_aggregation", "mean")
+    else:
+        reward = None
+    if reward is None:
+        return None
+
+    # Spread 在 local_ratio=0 时给所有 agent 同一个全局奖励。
+    # 取单人、均值或原样共享会得到相同标量，奖励除数仍需单独对比。
+    shared_spread = config["env"] == "spread" and env_kwargs.get("local_ratio") == 0
+    effective_reward = (
+        "shared"
+        if shared_spread and reward in {"individual", "mean", "first_agent", "shared"}
+        else reward
+    )
+    return {
+        "reward_aggregation": effective_reward,
+        "configured_reward_aggregation": reward,
+        "reward_divisor": reward_divisor,
+        "mask_unavailable_actions": algorithm in {"qmix", "qtran", "qplex"}
+        and config.get("mask_unavailable_actions", False),
+    }
+
+
 def evaluate(
     name,
     policy="random",
@@ -105,6 +143,7 @@ def evaluate(
         data = torch.load(checkpoint, map_location="cpu", weights_only=True)
         if data["config"]["env"] != name:
             raise ValueError("Checkpoint environment mismatch")
+        validate_training_scope(data["config"])
         trained_team = data["config"].get("train_team", "all")
         if trained_team != "all" and (
             team != trained_team or opponent != data["config"].get("train_opponent")
@@ -255,6 +294,7 @@ def evaluate(
         ),
         "training_env_kwargs": trained if data else None,
         "warm_start_sha256": data["config"].get("warm_start_sha256") if data else None,
+        "training_conditions": _training_conditions(data["config"], trained) if data else None,
         "model_sha256": hashlib.sha256(Path(checkpoint).read_bytes()).hexdigest() if data else None,
         "checkpoint": str(checkpoint) if checkpoint else None,
         "benchmark_id": benchmark_id,

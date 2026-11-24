@@ -151,7 +151,10 @@ class MAPPOModel(nn.Module):
             if not names:
                 continue
             batch = torch.stack(
-                [torch.as_tensor(observations[a], dtype=torch.float32, device=device) for a in names]
+                [
+                    torch.as_tensor(observations[a], dtype=torch.float32, device=device)
+                    for a in names
+                ]
             )
             logits = actor(batch)
             result.update(zip(names, logits))
@@ -161,7 +164,8 @@ class MAPPOModel(nn.Module):
         """[S] -> [N,S+N]；[T,S] -> [T,N,S+N]。"""
         states = torch.as_tensor(states, dtype=torch.float32, device=self.agent_ids.device)
         if (
-            states.ndim < 1 or states.shape[-1] != self.spec.state_size
+            states.ndim < 1
+            or states.shape[-1] != self.spec.state_size
             or not torch.isfinite(states).all()
         ):
             raise ValueError("MAPPO requires a finite state matching the saved EnvironmentSpec")

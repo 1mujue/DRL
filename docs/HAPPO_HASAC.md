@@ -4,7 +4,9 @@
 可由 `AlgorithmAPI` 的 `TrainingRequest` 直接调用。动作空间保持项目约定的离散动作、
 向量局部观测设定，与 MAPPO / QMIX 使用同一组场景参数、训练预算和 `reward_aggregation: mean`。
 
-## HAPPO：异构 actor + 顺序更新
+## 方法
+
+### HAPPO：异构 actor + 顺序更新
 
 - 结构：每个 agent 一套独立 actor（不共享参数）+ 集中 critic；actor 只读自己的局部观测，
   critic 输入为 `[global_state, agent_one_hot]`。
@@ -16,7 +18,7 @@
 - 已知近似：裁剪对象是累计比率乘积而非逐 agent 代理目标；不含论文的 M^{i} 优势分解与信赖域线搜索。
   这些偏差记录在每次运行的 `training_contract.json`。
 
-## HASAC（离散）
+### HASAC（离散）
 
 - 结构：每个 agent 一个 categorical actor（异构）+ 集中双 soft-Q，critic 输入
   `[central_state, 联合动作 one-hot]`；每个 agent 一个可学温度（目标熵 `target_entropy_scale·log|A|`）。
@@ -26,7 +28,9 @@
   不声称复现论文数值结果，偏差逐项写入 `training_contract.json`。
 - Tag 需要分阵营训练，当前不支持。
 
-## 配置与预算
+## 训练与评估
+
+### 配置与预算
 
 | 算法 | 入口配置 | 场景配置 |
 |---|---|---|
@@ -36,7 +40,9 @@
 预算单位为联合环境步；`episodes.csv` 与公共评估始终记录环境原始个体回报，
 训练奖励变换只在算法内部使用并记录在 `training_contract.json`。
 
-## 调用方式
+### 调用方式
+
+按照 [安装指南](SETUP.md) 激活项目解释器，从仓库根目录运行。
 
 直接使用公共 Python API：
 
@@ -65,11 +71,11 @@ with AlgorithmAPI("runs/backend_algorithms") as api:
 两者写入同样的产物：`config.json`、`episodes.csv`、`updates.csv`、
 `training_contract.json`、`model.pt`（按 `checkpoint_interval` 另存 `checkpoints/`）。
 
-## 验收
+## 验证与边界
 
 ```bash
-.venv/bin/python -m pytest tests/algorithms/test_happo.py tests/algorithms/test_hasac.py -q
-.venv/bin/python scripts/verify_algorithm_api.py --out runs/api_happo_hasac \
+python -m pytest tests/algorithms/test_happo.py tests/algorithms/test_hasac.py -q
+python scripts/verify_algorithm_api.py --out runs/api_happo_hasac \
     --algorithms happo hasac_discrete --steps 10000 --episodes 10
 ```
 

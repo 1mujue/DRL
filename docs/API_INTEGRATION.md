@@ -1,4 +1,4 @@
-# IPPO / IQL 算法接入交付
+# 算法 SDK 接入说明
 
 本模块供小组业务后端通过 Python 调用，API 版本为 `1.0`。
 负责算法目录、请求校验、训练任务、模型加载、观测到动作的推理、统一评估及产物查询。
@@ -6,32 +6,18 @@ Web 路由、用户业务与服务器部署由项目的公共后端承接。
 
 ## 安装与验收
 
-小组成员可先获取交付分支，再在 Python 3.12 环境中安装仓库：
+按照 [安装指南](SETUP.md) 激活项目解释器，从仓库根目录运行。
 
 ```bash
-git fetch origin
-git switch feat/ippo-iql
-```
-
-首次获取时，Git 会从同名远程分支建立本地跟踪分支。随后安装依赖：
-
-```bash
-python -m pip install -e '.[dev,extra-envs]' -c requirements.lock.txt
-```
-
-本地也可使用项目安装脚本 `python3 scripts/setup.py`。以下命令从仓库根目录运行；
-Windows 将 `.venv/bin/python` 替换为 `.venv\Scripts\python.exe`。
-
-```bash
-.venv/bin/python examples/algorithm_api.py --workspace runs/api_example
-.venv/bin/python scripts/verify_algorithm_api.py --out runs/api_acceptance --steps 100000 --episodes 10
+python examples/algorithm_api.py --workspace runs/api_example
+python scripts/verify_algorithm_api.py --out runs/api_acceptance --steps 100000 --episodes 10
 ```
 
 第一个示例对两个算法完成训练、模型调用、评估与比较。
 第二个命令在四环境各训练两个模型，验收报告位于输出目录的 `acceptance.json`。
 报告包含实际训练步数、IQL 更新次数、模型 SHA256、训练耗时、动作有效性检查、逐项评估汇总和产物路径。
 已完成的本机实测见 [接入验收记录](API_ACCEPTANCE.md)。
-验收使用单个训练种子；正式统计实验的种子与预算由全组统一，参见 [实验说明](IPPO_IQL.md)。
+验收使用单个训练种子；正式统计实验的种子与预算由全组统一，参见 [实验协议](EXPERIMENTS.md)。
 
 ## 后端最小调用
 
@@ -83,8 +69,8 @@ with AlgorithmAPI("runs/backend_algorithms", max_concurrent=1) as api:
 
 | 字段 | 默认值 | 规则 |
 |---|---|---|
-| `algorithm` | 必填 | `teamwork.api.catalog.ALGORITHMS` 中的算法名，当前为 `ippo`、`iql`、`happo`、`hasac_discrete` |
-| `env` | `spread` | `spread`、`tag`、`lbf`、`rware` |
+| `algorithm` | 必填 | `teamwork.api.catalog.ALGORITHMS` 中的算法名，当前为 `ippo`、`iql`、`happo`、`hasac_discrete`、`vdn`、`mat_dec` |
+| `env` | `spread` | 以所选算法的 `catalog()` 条目 `training_environments` 为准。SDK 的 Tag 固定对手训练支持 IPPO 和 IQL。 |
 | `steps` | `100000` | 正整数；联合环境交互步数 |
 | `seed` | `0` | 0 至 2³²−1 的整数 |
 | `device` | `cpu` | `cpu` 或本机可用的 `cuda` |
@@ -100,10 +86,15 @@ with AlgorithmAPI("runs/backend_algorithms", max_concurrent=1) as api:
 Tag 示例：
 
 ```python
-run = api.train({
-    "algorithm": "ippo", "env": "tag", "steps": 100000,
-    "team": "predators", "opponent": "rule",
-})
+run = api.train(
+    {
+        "algorithm": "ippo",
+        "env": "tag",
+        "steps": 100000,
+        "team": "predators",
+        "opponent": "rule",
+    }
+)
 result = api.evaluate(run["run_id"], {"episodes": 10})
 ```
 
@@ -147,7 +138,7 @@ with api.open_policy(run_id, seed=42) as policy:
     print(policy.agents)  # 受控 agent 的 ID
     actions = policy.predict(observations)
     batch_actions = policy.predict_batch([observations, observations])
-    policy.reset()       # 每个新回合调用
+    policy.reset()  # 每个新回合调用
 ```
 
 `observations` 格式为 `{agent_id: [数值, ...]}`，允许提供全部 agent 的局部观测，
@@ -212,7 +203,7 @@ workspace/
 ```
 
 运行 ID 和评估 ID 由 SDK 生成，读取接口校验 ID 格式与工作目录边界。
-训练器、环境接口和固定指标沿用项目公共实现；SDK 不为两种算法另建计分规则。
+所有 SDK 算法均使用项目的公共环境接口与固定评估指标。
 现有 CLI 和研究用脚本继续可用。模型支持加载执行策略；再次训练会创建一次新运行。
 
 组长集成时需要确认：后端持有 API 实例的方式、工作目录位置、训练并发上限，以及部署平台的 Python/依赖版本。
@@ -221,8 +212,8 @@ workspace/
 ## 生成交付包
 
 ```bash
-.venv/bin/python -m pip wheel . --no-deps --no-build-isolation --wheel-dir runs/api_delivery
-.venv/bin/python scripts/package_algorithm_delivery.py --wheel runs/api_delivery/drl_teamwork-0.1.0-py3-none-any.whl --acceptance runs/api_acceptance --out runs/algorithm_handoff
+python -m pip wheel . --no-deps --no-build-isolation --wheel-dir runs/api_delivery
+python scripts/package_algorithm_delivery.py --wheel runs/api_delivery/drl_teamwork-0.1.0-py3-none-any.whl --acceptance runs/api_acceptance --out runs/algorithm_handoff
 ```
 
 打包脚本要求四环境验收通过，并核对模型 SHA256。交付 ZIP 包含 wheel、接口说明、调用示例、

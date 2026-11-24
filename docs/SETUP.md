@@ -12,7 +12,6 @@ python -m pip install -e '.[dev,extra-envs]' -c requirements.lock.txt
 ```
 
 如果 VS Code 还指向旧解释器，在 WSL 窗口用 `Python: Select Interpreter` 选择 `deeprl-teamwork`。
-本项目 QTRAN 和 QPLEX 的测试步骤见 [方法说明](QTRAN_QPLEX.md)。
 
 ## 使用项目虚拟环境的安装方式
 
@@ -26,21 +25,29 @@ python scripts/setup.py
 ```
 
 它创建独立 Python 3.12、`.venv`，安装版本约束下的依赖；默认 CPU。
-安装后用项目解释器验收：
+Windows 在 PowerShell 激活项目环境：
 
 ```powershell
-# Windows
-.\.venv\Scripts\python.exe scripts/smoke.py
+.\.venv\Scripts\Activate.ps1
 ```
+
+Linux、WSL 和 macOS 在相应的 shell 中激活：
 
 ```bash
-# Ubuntu / WSL
-.venv/bin/python scripts/smoke.py
+source .venv/bin/activate
 ```
 
-完整验收会跑测试、短程训练、模型评估和图表，结果写入新建的 `runs/smoke-*/`，不是收敛实验。
-`python -m teamwork.cli --help` 查看入口；有 NVIDIA GPU 时可选 `python scripts/setup.py --backend cu128`，需另外验证 CUDA。
-Windows 和 Ubuntu 必须各自创建 `.venv`，不共享环境目录；当前完整实测平台是 Windows，Ubuntu 仍待实际训练与 CI 验证。
-`.github/workflows/ci.yml` 已为两种系统配置同一验收脚本；GitHub 远程仓库尚未创建。
+## 验收
 
-依赖由 `pyproject.toml` 声明、`requirements.lock.txt` 约束。本机虚拟环境和下载缓存不提交 Git。
+激活环境后，在仓库根目录运行：
+
+```bash
+python -m teamwork.cli doctor
+python scripts/smoke.py
+```
+
+Smoke 流程包括测试、短程训练、模型评估和图表，结果写入 `runs/smoke-*/`。GitHub Actions 在 Windows 和 Ubuntu 使用相同脚本。Windows 与 WSL 分别安装各自的环境并选择相应解释器。
+
+`python -m teamwork.cli --help` 查看入口。有 NVIDIA GPU 时可通过 `python scripts/setup.py --backend cu128` 安装并检查 CUDA 设备。
+
+依赖由 `pyproject.toml` 声明、`requirements.lock.txt` 约束。算法执行示例见 [算法目录](ALGORITHMS.md)。

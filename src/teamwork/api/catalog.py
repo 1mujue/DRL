@@ -8,6 +8,7 @@ from ..algorithms.hasac.trainer import DEFAULTS as HASAC_DEFAULTS
 from ..algorithms.iql.trainer import DEFAULTS as IQL_DEFAULTS
 from ..algorithms.mat_dec.trainer import DEFAULTS as MAT_DEC_DEFAULTS
 from ..algorithms.ppo.trainer import DEFAULTS as IPPO_DEFAULTS
+from ..algorithms.training import FIXED_OPPONENT_ALGORITHMS
 from ..algorithms.vdn.trainer import DEFAULTS as VDN_DEFAULTS
 from ..environments.registry import available_environments
 from ..evaluation.metrics import protocol_description, resolved_env_kwargs
@@ -84,11 +85,22 @@ INTEGER_PARAMETERS = {
         "updates_per_episode",
     },
     "vdn": {
-        "hidden_size", "batch_size", "warmup_steps", "replay_capacity",
-        "update_frequency", "target_update_frequency", "log_frequency", "epsilon_decay_steps",
+        "hidden_size",
+        "batch_size",
+        "warmup_steps",
+        "replay_capacity",
+        "update_frequency",
+        "target_update_frequency",
+        "log_frequency",
+        "epsilon_decay_steps",
     },
     "mat_dec": {
-        "embedding_dim", "num_heads", "num_blocks", "rollout_steps", "batch_size", "epochs",
+        "embedding_dim",
+        "num_heads",
+        "num_blocks",
+        "rollout_steps",
+        "batch_size",
+        "epochs",
     },
 }
 NONNEGATIVE_PARAMETERS = {"mat_dec": {"entropy_coef", "value_coef"}}
@@ -101,6 +113,11 @@ def catalog():
             {
                 "id": key,
                 **deepcopy(descriptor),
+                "training_environments": [
+                    name
+                    for name in available_environments(action_kind="discrete")
+                    if name != "tag" or key in FIXED_OPPONENT_ALGORITHMS
+                ],
                 "actions": "discrete",
                 "observations": "local_vector",
                 "parameter_sharing": False,

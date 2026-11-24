@@ -11,8 +11,9 @@ def test_registered():
 
 def test_attention_critic_shape():
     n_agents, obs_dim, n_actions, B = 3, 6, 4, 8
-    critic = maac_trainer.AttentionCritic(0, n_agents, obs_dim, n_actions,
-                                          embed_dim=16, n_heads=4, hidden=32)
+    critic = maac_trainer.AttentionCritic(
+        0, n_agents, obs_dim, n_actions, embed_dim=16, n_heads=4, hidden=32
+    )
     all_obs = torch.randn(B, n_agents, obs_dim)
     all_act_oh = torch.zeros(B, n_agents, n_actions)
     all_act_oh.scatter_(-1, torch.randint(0, n_actions, (B, n_agents, 1)), 1.0)
@@ -47,12 +48,17 @@ def test_update_step_runs():
         "rew": torch.randn(B),
         "term": torch.zeros(B),
     }
-    cfg = {"_names": names, "_n_actions": n_actions,
-           "gamma": 0.99, "tau": 0.005, "alpha": 0.5}
-           
+    cfg = {"_names": names, "_n_actions": n_actions, "gamma": 0.99, "tau": 0.005, "alpha": 0.5}
+
     stats = maac_trainer.maac_update(
-        actors, critics, target_actors, target_critics,
-        opts_actor, opts_critic, batch, cfg,
+        actors,
+        critics,
+        target_actors,
+        target_critics,
+        opts_actor,
+        opts_critic,
+        batch,
+        cfg,
     )
     assert any("critic_loss" in k for k in stats)
     assert any("actor_loss" in k for k in stats)

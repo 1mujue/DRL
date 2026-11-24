@@ -30,7 +30,7 @@ def test_update_step_runs():
     }
     # 注意这里的 _names 和 _n_actions
     cfg = {"_names": agents, "_n_actions": n_actions, "gamma": 0.99, "tau": 0.005}
-    
+
     stats = coma_trainer.coma_update(actors, critic, target, opt_a, opt_c, batch, cfg)
     assert set(stats) == {"critic_loss", "actor_loss", "q_mean"}
 
@@ -40,18 +40,18 @@ def test_save_load_roundtrip(tmp_path):
     obs_dim, n_actions = 6, 3
     actors = {a: coma_trainer.COMAActor(obs_dim, n_actions) for a in agents}
     critic = coma_trainer.COMACritic(len(agents), obs_dim, n_actions)
-    
+
     # 注意这里 agents 存的是 state_dict 字典，而不是列表，以匹配 load_policy
     ckpt = {
         "config": {"algorithm": "coma", "actor_hidden": 64},
-        "obs_dim": obs_dim, 
+        "obs_dim": obs_dim,
         "n_actions": n_actions,
         "agents": {a: actors[a].state_dict() for a in agents},
         "critic": critic.state_dict(),
     }
     path = tmp_path / "model.pt"
     torch.save(ckpt, path)
-    
+
     loaded, data = coma_trainer.load_policy(path, None, {a: np.zeros(obs_dim) for a in agents})
     assert data["config"]["algorithm"] == "coma"
     assert set(loaded) == set(agents)

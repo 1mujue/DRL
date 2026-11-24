@@ -6,6 +6,15 @@ from pathlib import Path
 import numpy as np
 
 
+def _comparable_training_conditions(result):
+    conditions = result.get("training_conditions")
+    if conditions is None:
+        return None
+    return {
+        key: value for key, value in conditions.items() if key != "configured_reward_aggregation"
+    }
+
+
 def compare_results(paths, metric):
     results = [json.loads(Path(path).read_text(encoding="utf-8")) for path in paths]
     if not results:
@@ -42,6 +51,18 @@ def compare_results(paths, metric):
         and len(trained) > 1
     ):
         raise ValueError("Warm-start checkpoint identity is missing")
+
+    training_conditions = _comparable_training_conditions(trained[0]) if trained else None
+    if any(_comparable_training_conditions(r) != training_conditions for r in trained):
+        raise ValueError(
+            "Training reward or action masking differs, or training conditions are missing. "
+            "Use matching conditions and the current evaluation format."
+        )
+    if trained and any(
+        r.get("training_setup") != trained[0].get("training_setup") for r in trained
+    ):
+        raise ValueError("Training team or opponent differs")
+
     definitions = {d["name"]: d for d in results[0]["benchmark"]["protocol"]["metrics"]}
     if metric not in definitions:
         raise ValueError(f"Unknown metric {metric!r}; choose from {tuple(definitions)}")
@@ -71,6 +92,7 @@ def compare_results(paths, metric):
         "training_steps": next(iter(budgets), None),
         "training_initialization": initialization,
         "training_env_kwargs": training_env,
+        "training_conditions": training_conditions,
         "aggregation": "equal-weight model means; sample std over independent training seeds",
         "algorithms": algorithms,
     }

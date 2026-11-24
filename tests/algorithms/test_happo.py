@@ -65,10 +65,7 @@ def make_batch(model, horizon=6, seed=0):
         for agent, size in zip(SPEC.agents, SPEC.observation_sizes)
     }
     actions = torch.stack(
-        [
-            torch.randint(0, count, (horizon,), generator=generator)
-            for count in SPEC.action_counts
-        ],
+        [torch.randint(0, count, (horizon,), generator=generator) for count in SPEC.action_counts],
         dim=1,
     )
     with torch.no_grad():
@@ -209,9 +206,7 @@ def test_update_order_changes_the_outcome():
         model.load_state_dict(reference)
         normalizer, actor_optimizers, critic_optimizer = make_update_state(model, config)
         batch = make_batch(model)
-        trainer._update(
-            model, normalizer, actor_optimizers, critic_optimizer, batch, order, config
-        )
+        trainer._update(model, normalizer, actor_optimizers, critic_optimizer, batch, order, config)
         parameters.append(
             torch.cat([value.detach().flatten() for value in actor_for(model, "a1").parameters()])
         )

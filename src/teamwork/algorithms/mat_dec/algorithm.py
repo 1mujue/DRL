@@ -21,9 +21,7 @@ class MATDecPolicy(Policy):
             if agent not in self.model.indices:
                 raise ValueError(f"Unknown MAT-Dec agent: {agent}")
             try:
-                local = torch.as_tensor(
-                    observation, dtype=parameter.dtype, device=parameter.device
-                )
+                local = torch.as_tensor(observation, dtype=parameter.dtype, device=parameter.device)
             except (TypeError, ValueError, RuntimeError) as error:
                 raise ValueError(f"Invalid MAT-Dec policy observation for {agent}") from error
             index = self.model.indices[agent]

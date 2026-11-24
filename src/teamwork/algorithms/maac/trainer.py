@@ -13,6 +13,7 @@ from torch.distributions import Categorical
 from ...environments.registry import make_env
 from ...evaluation.metrics import resolved_env_kwargs
 from ...experiments.runner import seed_all
+from ..training import validate_training_scope
 
 
 def _to_python(obj):
@@ -27,8 +28,10 @@ def _to_python(obj):
 
 def mlp(n_in, n_out, hidden):
     return nn.Sequential(
-        nn.Linear(n_in, hidden), nn.Tanh(),
-        nn.Linear(hidden, hidden), nn.Tanh(),
+        nn.Linear(n_in, hidden),
+        nn.Tanh(),
+        nn.Linear(hidden, hidden),
+        nn.Tanh(),
         nn.Linear(hidden, n_out),
     )
 
@@ -45,8 +48,9 @@ class MAACActor(nn.Module):
 class AttentionCritic(nn.Module):
     """单个 agent 的注意力 Critic：Q_i(s, a)，多头注意力聚合所有 agent 的 (obs, action) 编码。"""
 
-    def __init__(self, agent_idx, n_agents, obs_dim, n_actions,
-                 embed_dim=64, n_heads=4, hidden=128):
+    def __init__(
+        self, agent_idx, n_agents, obs_dim, n_actions, embed_dim=64, n_heads=4, hidden=128
+    ):
         super().__init__()
         assert embed_dim % n_heads == 0, "embed_dim must be divisible by n_heads"
         self.agent_idx = agent_idx
@@ -55,16 +59,20 @@ class AttentionCritic(nn.Module):
         self.head_dim = embed_dim // n_heads
 
         self.encoder = nn.Sequential(
-            nn.Linear(obs_dim + n_actions, embed_dim), nn.Tanh(),
-            nn.Linear(embed_dim, embed_dim), nn.Tanh(),
+            nn.Linear(obs_dim + n_actions, embed_dim),
+            nn.Tanh(),
+            nn.Linear(embed_dim, embed_dim),
+            nn.Tanh(),
         )
         self.W_q = nn.Linear(embed_dim, embed_dim)
         self.W_k = nn.Linear(embed_dim, embed_dim)
         self.W_v = nn.Linear(embed_dim, embed_dim)
         self.W_o = nn.Linear(embed_dim, embed_dim)
         self.head = nn.Sequential(
-            nn.Linear(2 * embed_dim, hidden), nn.Tanh(),
-            nn.Linear(hidden, hidden), nn.Tanh(),
+            nn.Linear(2 * embed_dim, hidden),
+            nn.Tanh(),
+            nn.Linear(hidden, hidden),
+            nn.Tanh(),
             nn.Linear(hidden, 1),
         )
 
@@ -77,8 +85,8 @@ class AttentionCritic(nn.Module):
         k = self.W_k(e).view(B, N, self.n_heads, self.head_dim).permute(0, 2, 1, 3)
         v = self.W_v(e).view(B, N, self.n_heads, self.head_dim).permute(0, 2, 1, 3)
 
-        q_i = q[:, :, self.agent_idx:self.agent_idx + 1, :]
-        attn = torch.softmax(q_i @ k.transpose(-2, -1) / self.head_dim ** 0.5, dim=-1)
+        q_i = q[:, :, self.agent_idx : self.agent_idx + 1, :]
+        attn = torch.softmax(q_i @ k.transpose(-2, -1) / self.head_dim**0.5, dim=-1)
         c = (attn @ v).squeeze(-2).reshape(B, self.embed_dim)
         c = self.W_o(c)
 
@@ -90,8 +98,9 @@ def _joint_onehot(actions_tensor, n_actions):
     return F.one_hot(actions_tensor.long(), n_actions).float()
 
 
-def maac_update(actors, critics, target_actors, target_critics,
-                opts_actor, opts_critic, batch, cfg):
+def maac_update(
+    actors, critics, target_actors, target_critics, opts_actor, opts_critic, batch, cfg
+):
     names = cfg["_names"]
     n_actions = cfg["_n_actions"]
     gamma = cfg["gamma"]
@@ -157,6 +166,7 @@ def maac_update(actors, critics, target_actors, target_critics,
 
 
 def train(config, out):
+    validate_training_scope(config)
     config = {**config, "env_kwargs": resolved_env_kwargs(config["env"], config.get("env_kwargs"))}
     out = Path(out)
     out.mkdir(parents=True, exist_ok=False)
@@ -180,20 +190,29 @@ def train(config, out):
 
     actors = {a: MAACActor(obs_dim, n_actions, actor_hidden).to(device) for a in names}
     critics = {
-        a: AttentionCritic(i, n_agents, obs_dim, n_actions, embed_dim, n_heads, critic_hidden).to(device)
+        a: AttentionCritic(i, n_agents, obs_dim, n_actions, embed_dim, n_heads, critic_hidden).to(
+            device
+        )
         for i, a in enumerate(names)
     }
     target_actors = {a: MAACActor(obs_dim, n_actions, actor_hidden).to(device) for a in names}
     target_critics = {
-        a: AttentionCritic(i, n_agents, obs_dim, n_actions, embed_dim, n_heads, critic_hidden).to(device)
+        a: AttentionCritic(i, n_agents, obs_dim, n_actions, embed_dim, n_heads, critic_hidden).to(
+            device
+        )
         for i, a in enumerate(names)
     }
     for a in names:
         target_actors[a].load_state_dict(actors[a].state_dict())
         target_critics[a].load_state_dict(critics[a].state_dict())
 
-    opts_actor = {a: torch.optim.Adam(actors[a].parameters(), lr=config.get("lr_actor", 3e-4)) for a in names}
-    opts_critic = {a: torch.optim.Adam(critics[a].parameters(), lr=config.get("lr_critic", 5e-4)) for a in names}
+    opts_actor = {
+        a: torch.optim.Adam(actors[a].parameters(), lr=config.get("lr_actor", 3e-4)) for a in names
+    }
+    opts_critic = {
+        a: torch.optim.Adam(critics[a].parameters(), lr=config.get("lr_critic", 5e-4))
+        for a in names
+    }
 
     cfg_internal = {**config, "_names": names, "_n_actions": n_actions}
 
@@ -218,14 +237,16 @@ def train(config, out):
                 next_obs, rewards, terminated, truncated, _ = env.step(acts)
                 end = all(terminated[a] or truncated[a] for a in names)
                 term = all(terminated[a] for a in names)
-                
+
                 reward_scale = cfg_internal.get("reward_scale", 10.0)
                 team_r = float(rewards[names[0]]) / reward_scale  # 共享奖励假设
 
                 buf["obs"].append({a: np.asarray(obs[a], dtype=np.float32) for a in names})
                 buf["act"].append({a: np.int64(acts[a]) for a in names})
                 buf["rew"].append(np.float32(team_r))
-                buf["next_obs"].append({a: np.asarray(next_obs[a], dtype=np.float32) for a in names})
+                buf["next_obs"].append(
+                    {a: np.asarray(next_obs[a], dtype=np.float32) for a in names}
+                )
                 buf["term"].append(np.float32(term))
                 buf["end"].append(np.float32(end))
 
@@ -248,15 +269,18 @@ def train(config, out):
 
             all_obs = torch.as_tensor(
                 np.stack([np.stack([b[a] for a in names]) for b in buf["obs"]]),
-                dtype=torch.float32, device=device,
+                dtype=torch.float32,
+                device=device,
             )
             all_next_obs = torch.as_tensor(
                 np.stack([np.stack([b[a] for a in names]) for b in buf["next_obs"]]),
-                dtype=torch.float32, device=device,
+                dtype=torch.float32,
+                device=device,
             )
             acts_t = torch.tensor(
                 [[b[a] for a in names] for b in buf["act"]],
-                dtype=torch.long, device=device,
+                dtype=torch.long,
+                device=device,
             )
             batch = {
                 "all_obs": all_obs,
@@ -266,14 +290,20 @@ def train(config, out):
                 "term": torch.tensor(buf["term"], dtype=torch.float32, device=device),
                 "end": torch.tensor(buf["end"], dtype=torch.float32, device=device),
             }
-            
+
             update_epochs = int(cfg_internal.get("update_epochs", 1))
             for _ in range(update_epochs):
                 stats = maac_update(
-                    actors, critics, target_actors, target_critics,
-                    opts_actor, opts_critic, batch, cfg_internal,
+                    actors,
+                    critics,
+                    target_actors,
+                    target_critics,
+                    opts_actor,
+                    opts_critic,
+                    batch,
+                    cfg_internal,
                 )
-            
+
             print(f"steps={steps} episodes={episode} {stats}", flush=True)
 
         torch.save(

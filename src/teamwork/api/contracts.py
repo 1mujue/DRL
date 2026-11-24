@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass, field, fields
 
 import torch
 
+from ..algorithms.training import FIXED_OPPONENT_ALGORITHMS, validate_training_scope
 from ..environments.registry import available_environments, make_env
 from ..evaluation.metrics import resolved_env_kwargs
 from .catalog import ALGORITHMS, INTEGER_PARAMETERS, NONNEGATIVE_PARAMETERS
@@ -70,22 +71,26 @@ class TrainingRequest(Request):
 
     def config(self):
         if not isinstance(self.algorithm, str) or self.algorithm not in ALGORITHMS:
-            raise invalid("algorithm", "Choose ippo or iql")
+            raise invalid("algorithm", f"Choose an SDK algorithm from {tuple(ALGORITHMS)}")
         if not isinstance(self.env, str) or self.env not in available_environments(action_kind="discrete"):
             raise invalid("env", f"Unknown environment: {self.env!r}")
-        if self.algorithm in {"vdn", "mat_dec"} and self.env == "tag":
-            raise invalid("env", f"{self.algorithm} requires a cooperative environment")
         positive_integer(self.steps, "steps")
         seed_value(self.seed)
         if self.device not in ("cpu", "cuda"):
             raise invalid("device", "Choose cpu or cuda")
         if self.device == "cuda" and not torch.cuda.is_available():
             raise invalid("device", "CUDA is not available on this host")
-        if self.env == "tag":
-            if self.team not in ("predators", "prey") or self.opponent not in ("rule", "random"):
-                raise invalid("team", "Tag requires an explicit team and fixed opponent")
-        elif self.team != "all" or self.opponent is not None:
-            raise invalid("team", "Team/opponent selection is supported only for Tag")
+        scope = {
+            "algorithm": self.algorithm,
+            "env": self.env,
+            "train_team": self.team,
+            "train_opponent": self.opponent,
+        }
+        try:
+            validate_training_scope(scope, require_fixed_opponent=True)
+        except ValueError as exc:
+            unsupported_tag = self.env == "tag" and self.algorithm not in FIXED_OPPONENT_ALGORITHMS
+            raise invalid("env" if unsupported_tag else "team", str(exc)) from exc
         parameters = json_object(self.parameters, "parameters")
         defaults = ALGORITHMS[self.algorithm]["defaults"]
         unknown = set(parameters) - (set(defaults) - {"device"})
@@ -128,14 +133,11 @@ class TrainingRequest(Request):
         settings = resolved_env_kwargs(self.env, json_object(self.env_kwargs, "env_kwargs"))
         return {
             **parameters,
-            "algorithm": self.algorithm,
-            "env": self.env,
+            **scope,
             "total_steps": self.steps,
             "seed": self.seed,
             "device": self.device,
             "env_kwargs": settings,
-            "train_team": self.team,
-            "train_opponent": self.opponent,
         }
 
     def validate(self):

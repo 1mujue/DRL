@@ -1,9 +1,34 @@
-# 算法认领清单
+# 算法目录与分工
 
-每人认领 1–3 个，先完成 1 个主方法，其余作为扩展。难度是针对本项目的工程估计。
+## 已接入的算法
 
-已接入的方法及配置见 [README](../README.md)。QTRAN-base 和 QPLEX 的实现与测试步骤见 [方法说明](QTRAN_QPLEX.md)。
-IPPO/IQL 的实现、配置和统一实验入口见 [方法与实验说明](IPPO_IQL.md)。
+以下算法通过 `python -m teamwork.cli train` 和 `make_algorithm(注册名)` 接入。SDK 指 `AlgorithmAPI`，支持的训练场景由 `catalog()` 返回。场景空白表示这张表暂无对应实验配置。
+
+| 算法 | 注册名 | Spread（目标覆盖） | Tag（追捕对抗） | LBF（合作采集） | RWARE（机器人仓储） | SDK |
+|---|---|---|---|---|---|---|
+| MAPPO（前馈） | `mappo_ff` | [3 agent](../configs/algorithms/mappo/spread.yaml) |  | [全场视野](../configs/algorithms/mappo/lbf.yaml)、[局部视野](../configs/algorithms/mappo/lbf_partial.yaml) | [2 agent](../configs/algorithms/mappo/rware.yaml) | — |
+| QMIX（局部 GRU） | `qmix` | [3 agent](../configs/algorithms/qmix/spread.yaml) |  | [全场视野](../configs/algorithms/qmix/lbf.yaml)、[局部视野](../configs/algorithms/qmix/lbf_partial.yaml) | [2 agent](../configs/algorithms/qmix/rware.yaml) | — |
+| IPPO 基线 | `ippo` | [独立配置](../configs/algorithms/ippo.yaml) | [固定队伍](IPPO_IQL.md) | [场景覆盖](IPPO_IQL.md) | [场景覆盖](IPPO_IQL.md) | 支持 |
+| 集中 critic PPO 基线 | `mappo` | [共用配置](../configs/algorithms/ppo.yaml) | 固定对手（CLI） |  |  | — |
+| DQN-based IQL | `iql` | [独立配置](../configs/algorithms/iql.yaml) | [固定队伍](IPPO_IQL.md) | [场景覆盖](IPPO_IQL.md) | [场景覆盖](IPPO_IQL.md) | 支持 |
+| COMA | `coma` | [默认配置](../configs/algorithms/coma.yaml) |  |  |  | — |
+| VDN | `vdn` | [默认配置](../configs/algorithms/vdn.yaml) |  | [切换场景](VDN.md) | [切换场景](VDN.md) | 支持 |
+| MAT-Dec | `mat_dec` | [默认配置](../configs/algorithms/mat_dec.yaml) |  | [切换场景](MAT_DEC.md) | [切换场景](MAT_DEC.md) | 支持 |
+| MAAC | `maac` | [默认配置](../configs/algorithms/maac.yaml) |  |  |  | — |
+| QTRAN | `qtran` | [默认配置](../configs/algorithms/qtran.yaml) |  | `--env lbf` | `--env rware` | — |
+| QPLEX | `qplex` | [默认配置](../configs/algorithms/qplex.yaml) |  | `--env lbf` | `--env rware` | — |
+| HAPPO（异构 actor，顺序更新） | `happo` | [3 agent](../configs/algorithms/happo/spread.yaml) |  | [全场视野](../configs/algorithms/happo/lbf.yaml)、[局部视野](../configs/algorithms/happo/lbf_partial.yaml) | [2 agent](../configs/algorithms/happo/rware.yaml) | 支持 |
+| HASAC（离散，软优势分解） | `hasac_discrete` | [3 agent](../configs/algorithms/hasac/spread.yaml) |  | [全场视野](../configs/algorithms/hasac/lbf.yaml)、[局部视野](../configs/algorithms/hasac/lbf_partial.yaml) | [2 agent](../configs/algorithms/hasac/rware.yaml) | 支持 |
+
+`mappo` 是使用 `ppo.yaml` 的集中 critic PPO 基线，通过 `--algorithm mappo` 选择。前馈 MAPPO 的注册名为 `mappo_ff`。Tag 固定对手训练由 `ippo`、`iql`、`mappo` 提供，SDK 开放其中的 IPPO 和 IQL。
+
+### 方法说明
+
+- [IPPO 与 IQL](IPPO_IQL.md)
+- [HAPPO 与离散 HASAC](HAPPO_HASAC.md)
+- [QTRAN-base 与 QPLEX](QTRAN_QPLEX.md)
+- [VDN](VDN.md)与 [MAT-Dec](MAT_DEC.md)
+- 其他方法的实现位于 [算法源码](../src/teamwork/algorithms/)，各自的基础配置见上表。
 
 ## 候选方法
 
@@ -28,7 +53,7 @@ IPPO/IQL 的实现、配置和统一实验入口见 [方法与实验说明](IPPO
 **可选连续动作研究线**：[MADDPG](https://arxiv.org/abs/1706.02275) 与 [MATD3 参考实现](https://github.com/PKU-MARL/HARL)。
 需要连续动作适配和独立实验条件，不纳入当前离散动作横向表；不能直接将输出取整后称为原算法。
 
-## 六人的认领示例
+## 前期分工示例
 
 | 研究线 | 可认领 1–3 个 | 推荐主方法 | 对照问题 |
 |---|---|---|---|
@@ -39,26 +64,13 @@ IPPO/IQL 的实现、配置和统一实验入口见 [方法与实验说明](IPPO
 | E：顺序更新与熵 | HAPPO、HASAC | HAPPO，HASAC 为进阶 | 更新顺序、探索与样本效率 |
 | F：较新表示方法 | MAT/MAT-Dec、SMPE² | 选一个主方法 | 序列建模或 belief/探索的作用 |
 
-**注意:** 每人至少选择两个算法开展研究，并且具体的算法不需要和上面的表格列举的算法一致，也不需要按照上述研究线的设定开展。
-
-在选择研究的DRL算法后，需要在已有的环境中完成训练、验证工作，并提供可视化的结果说明（组长觉得可视化的内容和展示方式也需要统一，但是现在还没有完成实验，所以暂不考虑），
+研究线和认领数量以小组分工为准。成员在公共环境上训练和验证所选方法，并提供行为可视化。
 
 每人交付方法说明、实现与配置、原始结果、多种子汇总、行为解释及失败分析；交叉复核另一人的结果。
 
 **组长额外统一实验矩阵、预算和指标版本** 。第 1 周认领并冻结条件，第 2 周跨场景跑通，第 3 周多种子比较，第 4 周完成图表、报告与复现。公共接口和指标如果需要更改，请直接在 **群中说明**， 需要及时告知大家。
 
-## 认领前必须确认的三件事
-
-1. **奖励合同。** VDN/QMIX/QTRAN/QPLEX/COMA 等合作方法不能将敌我双方混成一个共享奖励团队。
-   当前 Spread 默认含个体碰撞项，LBF/RWARE 也可能返回个体奖励；不能直接视为严格共享奖励。
-   全组应先确定合作比较轨：例如统一 `r_team = mean_i(r_i)`，并让该轨所有方法采用同一训练奖励约定。
-   这项转换尚未实现，当前比较工具也尚未校验训练奖励变换，实施时需记录进训练元数据并增加检查；本次不改变现有指标 v1。
-   [EPyMARL 的奖励支持说明](https://github.com/uoe-agents/epymarl)明确区分共享奖励和一般个体奖励方法。
-2. **执行信息。** 当前约定 actor 只用自己的局部观测。MAT 的联合/自回归执行不能默认算作同等信息条件；
-   优先审计 MAT-Dec，若仍访问联合观测，应单列执行信息条件，禁止直接和严格分散策略混排。
-   Tag 的合作方法需按阵营训练并固定另一方；IPPO/IQL 已支持训练参数 `--team predators/prey --opponent rule/random`，只更新指定阵营的网络。其他方法接入时也需遵循该条件。
-3. **参考代码不是现成插件。** 官方实现可能依赖旧 Gym、不同 MPE 或 Python 版本。先移植算法到公共接口，
-   再在本项目统一场景中实验。 注意： 我们的项目保证了对不同算法的比较，是在同一个环境完成的，所以 **不需要参考该算法在论文中的表现** 。
+训练奖励、执行信息、固定对手与可比性要求见 [实验协议](EXPERIMENTS.md)。
 
 ## 参考实现入口
 

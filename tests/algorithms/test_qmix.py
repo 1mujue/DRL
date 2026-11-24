@@ -27,13 +27,24 @@ from teamwork.experiments.runner import run_training
 
 
 def config_for(environment="spread", **overrides):
-    return resolve_config({
-        "algorithm": "qmix", "env": environment,
-        "env_kwargs": resolved_env_kwargs(environment), "seed": 11, "total_steps": 12,
-        "hidden_size": 8, "mixing_size": 4, "hypernet_size": 8,
-        "batch_size": 2, "learning_starts_episodes": 2, "replay_capacity": 4,
-        "target_update_interval": 2, "checkpoint_interval": 5, **overrides,
-    })
+    return resolve_config(
+        {
+            "algorithm": "qmix",
+            "env": environment,
+            "env_kwargs": resolved_env_kwargs(environment),
+            "seed": 11,
+            "total_steps": 12,
+            "hidden_size": 8,
+            "mixing_size": 4,
+            "hypernet_size": 8,
+            "batch_size": 2,
+            "learning_starts_episodes": 2,
+            "replay_capacity": 4,
+            "target_update_interval": 2,
+            "checkpoint_interval": 5,
+            **overrides,
+        }
+    )
 
 
 def episode_for(spec, length, *, terminal=False, truncated=False):
@@ -43,7 +54,8 @@ def episode_for(spec, length, *, terminal=False, truncated=False):
     states = np.repeat(np.arange(length + 1, dtype=np.float32)[:, None], spec.state_size, axis=1)
     flags = np.zeros(length, np.float32)
     return {
-        "observations": observations, "states": states,
+        "observations": observations,
+        "states": states,
         "actions": np.zeros((length, len(spec.agents)), np.int64),
         "rewards": np.ones(length, np.float32),
         "terminated": np.array([*flags[:-1], float(terminal)], np.float32),
@@ -124,7 +136,9 @@ def test_recurrent_policy_and_replay_unroll_have_the_same_action_history():
     policy = QMIXPolicy(controller)
     observations = torch.arange(16, dtype=torch.float32).reshape(1, 4, 2, 2) / 10
     captured = []
-    hook = controller.register_forward_hook(lambda _module, _inputs, output: captured.append(output[0]))
+    hook = controller.register_forward_hook(
+        lambda _module, _inputs, output: captured.append(output[0])
+    )
     try:
         actions = []
         for time in range(4):
@@ -181,8 +195,9 @@ def test_replay_rejects_reset_crossings_and_missing_final_observation():
 
 
 def test_td_targets_bootstrap_time_limits_and_padding_does_not_change_loss():
-    target = td_targets(torch.tensor([1.0, 1.0]), torch.tensor([1.0, 0.0]),
-                        torch.tensor([10.0, 10.0]), gamma=0.9)
+    target = td_targets(
+        torch.tensor([1.0, 1.0]), torch.tensor([1.0, 0.0]), torch.tensor([10.0, 10.0]), gamma=0.9
+    )
     torch.testing.assert_close(target, torch.tensor([1.0, 10.0]))
     predictions = torch.tensor([[2.0, 4.0, 100.0]], requires_grad=True)
     targets = torch.tensor([[1.0, 2.0, -1000000.0]])
@@ -194,11 +209,17 @@ def test_td_targets_bootstrap_time_limits_and_padding_does_not_change_loss():
 
 def fixed_value_learner(*, double_q=True, target_interval=200):
     spec = EnvironmentSpec(("a",), (1,), (2,), 1)
-    config = config_for(mixing_size=1, use_rnn=False, double_q=double_q,
-                        target_update_interval=target_interval)
+    config = config_for(
+        mixing_size=1, use_rnn=False, double_q=double_q, target_update_interval=target_interval
+    )
     learner = QMIXLearner(spec, config, "cpu")
     with torch.no_grad():
-        for module in (learner.controller, learner.target_controller, learner.mixer, learner.target_mixer):
+        for module in (
+            learner.controller,
+            learner.target_controller,
+            learner.mixer,
+            learner.target_mixer,
+        ):
             for parameter in module.parameters():
                 parameter.zero_()
         learner.controller.output_layer.bias.copy_(torch.tensor([1.0, 2.0]))
@@ -208,9 +229,12 @@ def fixed_value_learner(*, double_q=True, target_interval=200):
             mixer.first_weights[-1].bias.fill_(1.0)
             mixer.final_weights[-1].bias.fill_(1.0)
     batch = {
-        "observations": torch.zeros(1, 2, 1, 1), "states": torch.zeros(1, 2, 1),
-        "actions": torch.zeros(1, 1, 1, dtype=torch.long), "rewards": torch.zeros(1, 1),
-        "terminated": torch.zeros(1, 1), "truncated": torch.ones(1, 1),
+        "observations": torch.zeros(1, 2, 1, 1),
+        "states": torch.zeros(1, 2, 1),
+        "actions": torch.zeros(1, 1, 1, dtype=torch.long),
+        "rewards": torch.zeros(1, 1),
+        "terminated": torch.zeros(1, 1),
+        "truncated": torch.ones(1, 1),
         "filled": torch.ones(1, 1),
     }
     return learner, batch
@@ -234,8 +258,10 @@ def test_terminal_does_not_bootstrap_and_target_sync_copies_both_networks():
     batch["terminated"].fill_(1)
     metrics = learner.train_batch(batch)
     assert metrics["target_mean"] == 0
-    for online, target in ((learner.controller, learner.target_controller),
-                           (learner.mixer, learner.target_mixer)):
+    for online, target in (
+        (learner.controller, learner.target_controller),
+        (learner.mixer, learner.target_mixer),
+    ):
         for name, value in online.state_dict().items():
             torch.testing.assert_close(value, target.state_dict()[name])
 
@@ -255,12 +281,15 @@ def test_team_reward_modes_and_epsilon_schedule_are_explicit():
 
 @pytest.mark.parametrize("environment", ["spread", "lbf", "rware"])
 def test_cooperative_training_updates_saves_loads_and_evaluates(tmp_path, monkeypatch, environment):
-    if environment != "spread" and importlib.util.find_spec(
-        "lbforaging" if environment == "lbf" else "rware"
-    ) is None:
+    if (
+        environment != "spread"
+        and importlib.util.find_spec("lbforaging" if environment == "lbf" else "rware") is None
+    ):
         pytest.skip("optional cooperative environment not installed")
     settings = resolved_env_kwargs(environment)
-    setting = {"spread": "max_cycles", "lbf": "max_episode_steps", "rware": "max_steps"}[environment]
+    setting = {"spread": "max_cycles", "lbf": "max_episode_steps", "rware": "max_steps"}[
+        environment
+    ]
     settings[setting] = 3
     config = config_for(environment, env_kwargs=settings)
     env = make_env(environment, **settings)
@@ -274,8 +303,10 @@ def test_cooperative_training_updates_saves_loads_and_evaluates(tmp_path, monkey
         assert saved["training_contract"]["reward_aggregation"] == "mean"
         assert saved["resume_supported"] is False
         for key, module in (("controller", initial.controller), ("mixer", initial.mixer)):
-            assert any(not torch.equal(saved[key][name], value)
-                       for name, value in module.named_parameters())
+            assert any(
+                not torch.equal(saved[key][name], value)
+                for name, value in module.named_parameters()
+            )
             assert all(torch.isfinite(value).all() for value in saved[key].values())
         for step in (5, 10):
             periodic = checkpoint.parent / "checkpoints" / f"step_{step:09d}.pt"
@@ -292,6 +323,7 @@ def test_cooperative_training_updates_saves_loads_and_evaluates(tmp_path, monkey
         algorithm = make_algorithm("qmix")
         loaded = algorithm.load_policy(checkpoint, env, observations)
         again = algorithm.load_policy(checkpoint, env, observations)
+
         # 加载之后，执行不再读取集中状态或评估快照。
         def forbidden():
             raise AssertionError("Execution policy accessed hidden environment information")
@@ -315,20 +347,32 @@ def test_cooperative_training_updates_saves_loads_and_evaluates(tmp_path, monkey
 
 
 def test_rejects_opposing_teams_without_writing(tmp_path):
-    config = {"algorithm": "qmix", "env": "tag", "env_kwargs": {"max_cycles": 5},
-              "seed": 0, "total_steps": 8}
+    config = {
+        "algorithm": "qmix",
+        "env": "tag",
+        "env_kwargs": {"max_cycles": 5},
+        "seed": 0,
+        "total_steps": 8,
+    }
     with pytest.raises(ValueError, match="cooperative team"):
         make_algorithm("qmix").train(config, tmp_path / "invalid")
     assert not (tmp_path / "invalid").exists()
 
 
-@pytest.mark.parametrize("use_last_action,use_agent_id", [(True, True), (True, False), (False, True)])
+@pytest.mark.parametrize(
+    "use_last_action,use_agent_id", [(True, True), (True, False), (False, True)]
+)
 def test_feedforward_unroll_matches_sequential_outputs_and_gradients(use_last_action, use_agent_id):
     torch.manual_seed(19)
     spec = EnvironmentSpec(("a", "b"), (2, 3), (2, 3), 4)
-    controller = LocalQController(spec, config_for(
-        use_rnn=False, use_last_action=use_last_action, use_agent_id=use_agent_id,
-    )).double()
+    controller = LocalQController(
+        spec,
+        config_for(
+            use_rnn=False,
+            use_last_action=use_last_action,
+            use_agent_id=use_agent_id,
+        ),
+    ).double()
     reference = deepcopy(controller)
     observations = torch.randn(2, 5, 2, 3, dtype=torch.float64, requires_grad=True)
     expected_inputs = observations.detach().clone().requires_grad_()
@@ -361,9 +405,17 @@ def test_feedforward_unroll_matches_sequential_outputs_and_gradients(use_last_ac
 def test_direct_yaml_api_and_checkpoint_only_policies_are_independent(tmp_path, monkeypatch):
     path = Path(__file__).resolve().parents[2] / "configs" / "algorithms" / "qmix.yaml"
     config = yaml.safe_load(path.read_text(encoding="utf-8"))
-    config.update(total_steps=8, env_kwargs={"max_cycles": 2}, hidden_size=8,
-                  mixing_size=4, hypernet_size=8, batch_size=2,
-                  learning_starts_episodes=2, replay_capacity=4, checkpoint_interval=0)
+    config.update(
+        total_steps=8,
+        env_kwargs={"max_cycles": 2},
+        hidden_size=8,
+        mixing_size=4,
+        hypernet_size=8,
+        batch_size=2,
+        learning_starts_episodes=2,
+        replay_capacity=4,
+        checkpoint_interval=0,
+    )
     original = deepcopy(config)
     algorithm = QMIXAlgorithm()
     checkpoint = algorithm.train(config, tmp_path / "direct")
@@ -378,9 +430,16 @@ def test_direct_yaml_api_and_checkpoint_only_policies_are_independent(tmp_path, 
         spec = env.describe()
         with pytest.raises(ValueError, match="fixed agent population"):
             algorithm.load_policy(checkpoint, observations={})
-        monkeypatch.setattr(env, "describe", lambda: EnvironmentSpec(
-            spec.agents, spec.observation_sizes, spec.action_counts, spec.state_size + 1,
-        ))
+        monkeypatch.setattr(
+            env,
+            "describe",
+            lambda: EnvironmentSpec(
+                spec.agents,
+                spec.observation_sizes,
+                spec.action_counts,
+                spec.state_size + 1,
+            ),
+        )
         with pytest.raises(ValueError, match="does not match"):
             algorithm.load_policy(checkpoint, env, observations)
     finally:
@@ -409,8 +468,12 @@ def test_direct_yaml_api_and_checkpoint_only_policies_are_independent(tmp_path, 
 
 
 def test_config_defaults_are_resolved_without_aliasing_the_callers_dictionary():
-    config = {"env": "spread", "env_kwargs": {"max_cycles": 7}, "total_steps": 8,
-              "metadata": {"tags": ["api"]}}
+    config = {
+        "env": "spread",
+        "env_kwargs": {"max_cycles": 7},
+        "total_steps": 8,
+        "metadata": {"tags": ["api"]},
+    }
     original = deepcopy(config)
     resolved = resolve_config(config)
     assert resolved["algorithm"] == "qmix" and resolved["seed"] == 0
@@ -428,9 +491,15 @@ def test_direct_api_supports_registered_environment_without_metric_defaults(tmp_
 
     monkeypatch.setitem(registry._BUILDERS, "qmix_custom_spread", registry._BUILDERS["spread"])
     config = {
-        "env": "qmix_custom_spread", "env_kwargs": {"N": 2, "local_ratio": 0.0, "max_cycles": 2},
-        "total_steps": 8, "hidden_size": 8, "mixing_size": 4, "hypernet_size": 8,
-        "batch_size": 2, "learning_starts_episodes": 2, "replay_capacity": 4,
+        "env": "qmix_custom_spread",
+        "env_kwargs": {"N": 2, "local_ratio": 0.0, "max_cycles": 2},
+        "total_steps": 8,
+        "hidden_size": 8,
+        "mixing_size": 4,
+        "hypernet_size": 8,
+        "batch_size": 2,
+        "learning_starts_episodes": 2,
+        "replay_capacity": 4,
         "checkpoint_interval": 0,
     }
     original = deepcopy(config)
@@ -449,11 +518,20 @@ def test_direct_api_supports_registered_environment_without_metric_defaults(tmp_
         env.close()
 
 
-@pytest.mark.parametrize("overrides", [
-    {"env_kwargs": None}, {"env_kwargs": []}, {"env_kwargs": {"max_cycles": float("nan")}},
-    {"metadata": object()}, {"algorithm": "ippo"}, {"env": "unknown"},
-    {"total_steps": 0}, {"seed": -1}, {"device": "meta"},
-])
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"env_kwargs": None},
+        {"env_kwargs": []},
+        {"env_kwargs": {"max_cycles": float("nan")}},
+        {"metadata": object()},
+        {"algorithm": "ippo"},
+        {"env": "unknown"},
+        {"total_steps": 0},
+        {"seed": -1},
+        {"device": "meta"},
+    ],
+)
 def test_invalid_direct_api_input_fails_before_writing(tmp_path, overrides):
     config = {"env": "spread", "total_steps": 1, **overrides}
     with pytest.raises((ValueError, TypeError)):
