@@ -60,7 +60,12 @@ def test_bad_evaluation_request(payload):
 def test_catalog_and_requests_return_independent_data():
     info = catalog()
     assert {a["id"] for a in info["algorithms"]} == {
-        "ippo", "iql", "happo", "hasac_discrete", "vdn", "mat_dec"
+        "ippo",
+        "iql",
+        "happo",
+        "hasac_discrete",
+        "vdn",
+        "mat_dec",
     }
     assert {e["id"] for e in info["environments"]} == {"spread", "tag", "lbf", "rware"}
     info["algorithms"][0]["defaults"]["lr"] = -1
@@ -110,7 +115,7 @@ def test_new_algorithm_invalid_parameter_relations_fail_before_training(algorith
         TrainingRequest(algorithm, parameters=parameters).config()
 
 
-@pytest.mark.parametrize("algorithm", ["vdn", "mat_dec"])
+@pytest.mark.parametrize("algorithm", ["vdn", "mat_dec", "happo", "hasac_discrete"])
 def test_cooperative_algorithms_reject_tag_before_task_creation(algorithm):
     with pytest.raises(AlgorithmAPIError, match="cooperative"):
         TrainingRequest(algorithm, env="tag", team="predators", opponent="rule").config()

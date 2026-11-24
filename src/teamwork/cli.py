@@ -86,7 +86,11 @@ def main():
         config_path = Path(args.config)
         config_text = config_path.read_text(encoding="utf-8")
         # SDK 把训练请求写成 JSON；用 yaml 解析会把 1e-05 这类指数写法误判成字符串。
-        config = json.loads(config_text) if config_path.suffix == ".json" else yaml.safe_load(config_text)
+        config = (
+            json.loads(config_text)
+            if config_path.suffix == ".json"
+            else yaml.safe_load(config_text)
+        )
         if args.env and args.env != config["env"]:
             # 换场景时不能把原场景的 N、障碍物等参数一起带过去。
             config["env"] = args.env

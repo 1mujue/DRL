@@ -6,6 +6,15 @@ from pathlib import Path
 import numpy as np
 
 
+def _comparable_training_conditions(result):
+    conditions = result.get("training_conditions")
+    if conditions is None:
+        return None
+    return {
+        key: value for key, value in conditions.items() if key != "configured_reward_aggregation"
+    }
+
+
 def compare_results(paths, metric):
     results = [json.loads(Path(path).read_text(encoding="utf-8")) for path in paths]
     if not results:
@@ -23,6 +32,18 @@ def compare_results(paths, metric):
     budgets = {r["training_steps"] for r in results if r["training_steps"] is not None}
     if len(budgets) > 1:
         raise ValueError("Training interaction budgets differ")
+    learned = [r for r in results if r["training_steps"] is not None]
+    training_conditions = _comparable_training_conditions(learned[0]) if learned else None
+    if any(_comparable_training_conditions(r) != training_conditions for r in learned):
+        raise ValueError(
+            "Training reward or action masking differs, or training conditions are missing. "
+            "Use matching conditions and the current evaluation format."
+        )
+    if learned and any(
+        r.get("training_setup") != learned[0].get("training_setup") for r in learned
+    ):
+        raise ValueError("Training team or opponent differs")
+
     definitions = {d["name"]: d for d in results[0]["benchmark"]["protocol"]["metrics"]}
     if metric not in definitions:
         raise ValueError(f"Unknown metric {metric!r}; choose from {tuple(definitions)}")
@@ -49,6 +70,7 @@ def compare_results(paths, metric):
         "env": results[0]["env"],
         "metric": definitions[metric],
         "training_steps": next(iter(budgets), None),
+        "training_conditions": training_conditions,
         "aggregation": "equal-weight model means; sample std over independent training seeds",
         "algorithms": algorithms,
     }

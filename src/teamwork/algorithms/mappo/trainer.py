@@ -1,7 +1,7 @@
 """单环境前馈 MAPPO：局部 actor、集中 critic、共享参数和独立指标日志。
 
-    仅依赖公共环境接口；不读取 task_snapshot、MPE world 或 Gym 底层对象。
-    此实现不包含 RNN、向量并行、自博弈池或精确断点续训。
+仅依赖公共环境接口；不读取 task_snapshot、MPE world 或 Gym 底层对象。
+此实现不包含 RNN、向量并行、自博弈池或精确断点续训。
 """
 
 import csv
@@ -20,6 +20,7 @@ from torch.distributions import Categorical
 from ...environments.base import state
 from ...environments.registry import make_env
 from ...evaluation.metrics import resolved_env_kwargs
+from ..training import validate_training_scope
 from .networks import MAPPOModel, ValueNormalizer, resolve_device, validate_observations
 
 DEFAULTS = {
@@ -70,20 +71,41 @@ def resolve_config(config):
     except KeyError:
         # 自定义已注册环境可显式提供参数，不能隐式冒用其他场景的默认条件。
         result.setdefault("env_kwargs", {})
-    for key in ("total_steps", "rollout_steps", "batch_size", "epochs", "hidden_size", "hidden_layers"):
+    for key in (
+        "total_steps",
+        "rollout_steps",
+        "batch_size",
+        "epochs",
+        "hidden_size",
+        "hidden_layers",
+    ):
         value = result[key]
         if isinstance(value, bool) or not isinstance(value, int) or value < 1:
             raise ValueError(f"{key} must be a positive integer")
-    if isinstance(result["seed"], bool) or not isinstance(result["seed"], int) or result["seed"] < 0:
+    if (
+        isinstance(result["seed"], bool)
+        or not isinstance(result["seed"], int)
+        or result["seed"] < 0
+    ):
         raise ValueError("seed must be a nonnegative integer")
     interval = result["checkpoint_interval"]
     if isinstance(interval, bool) or not isinstance(interval, int) or interval < 0:
         raise ValueError("checkpoint_interval must be a nonnegative integer (0 disables it)")
     for key in ("gamma", "gae_lambda"):
-        if isinstance(result[key], bool) or not math.isfinite(result[key]) or not 0 <= result[key] <= 1:
+        if (
+            isinstance(result[key], bool)
+            or not math.isfinite(result[key])
+            or not 0 <= result[key] <= 1
+        ):
             raise ValueError(f"{key} must lie in [0, 1]")
     for key in (
-        "lr", "clip", "value_clip", "max_grad_norm", "adam_eps", "huber_delta", "actor_output_gain"
+        "lr",
+        "clip",
+        "value_clip",
+        "max_grad_norm",
+        "adam_eps",
+        "huber_delta",
+        "actor_output_gain",
     ):
         if isinstance(result[key], bool) or not math.isfinite(result[key]) or result[key] <= 0:
             raise ValueError(f"{key} must be finite and positive")
@@ -95,8 +117,12 @@ def resolve_config(config):
         if isinstance(result[key], bool) or not math.isfinite(result[key]) or result[key] <= 0:
             raise ValueError(f"{key} must be finite and positive")
     for key in (
-        "use_clipped_value_loss", "use_huber_loss", "value_normalization",
-        "feature_normalization", "share_policy", "linear_lr_decay"
+        "use_clipped_value_loss",
+        "use_huber_loss",
+        "value_normalization",
+        "feature_normalization",
+        "share_policy",
+        "linear_lr_decay",
     ):
         if not isinstance(result[key], bool):
             raise TypeError(f"{key} must be a boolean")
@@ -133,11 +159,14 @@ def aggregate_rewards(rewards, agents, mode):
 def training_contract(config):
     mode = config["reward_aggregation"]
     return {
-        "algorithm": "mappo_ff", "implementation": "mappo_feedforward_v1",
+        "algorithm": "mappo_ff",
+        "implementation": "mappo_feedforward_v1",
         "reward_aggregation": mode,
         "reward_scope": "individual_agents" if mode == "individual" else "one_cooperative_team",
-        "execution": "local_observation", "central_state": "critic_during_training_only",
-        "step_unit": "joint_environment_steps", "resume_supported": False,
+        "execution": "local_observation",
+        "central_state": "critic_during_training_only",
+        "step_unit": "joint_environment_steps",
+        "resume_supported": False,
     }
 
 
@@ -160,10 +189,16 @@ def compute_gae(rewards, values, next_values, terminated, episode_end, gamma, ga
 
 
 def value_loss(
-    values, old_values, targets, clip=0.2, huber_delta=10.0,
-    use_clipped_value_loss=True, use_huber_loss=True,
+    values,
+    old_values,
+    targets,
+    clip=0.2,
+    huber_delta=10.0,
+    use_clipped_value_loss=True,
+    use_huber_loss=True,
 ):
     """clip 的 current/old 均是网络归一化输出；targets 已按本轮统计归一化。"""
+
     def error_loss(errors):
         if not use_huber_loss:
             return 0.5 * errors.square()
@@ -201,8 +236,13 @@ def _checkpoint(path, model, normalizer, config, steps):
 
 def _update(model, normalizer, actor_optimizers, critic_optimizer, batch, config):
     advantages, targets = compute_gae(
-        batch["rewards"], batch["values"], batch["next_values"],
-        batch["terminated"], batch["episode_end"], config["gamma"], config["gae_lambda"],
+        batch["rewards"],
+        batch["values"],
+        batch["next_values"],
+        batch["terminated"],
+        batch["episode_end"],
+        config["gamma"],
+        config["gae_lambda"],
     )
     advantages = (advantages - advantages.mean()) / (advantages.std(unbiased=False) + 1e-8)
     if config["value_normalization"]:
@@ -263,8 +303,13 @@ def _update(model, normalizer, actor_optimizers, critic_optimizer, batch, config
         for ids in torch.randperm(len(targets), device=targets.device).split(config["batch_size"]):
             predictions = model.critic(inputs[ids]).squeeze(-1)
             loss = value_loss(
-                predictions, old_values[ids], targets[ids], config["value_clip"],
-                config["huber_delta"], config["use_clipped_value_loss"], config["use_huber_loss"],
+                predictions,
+                old_values[ids],
+                targets[ids],
+                config["value_clip"],
+                config["huber_delta"],
+                config["use_clipped_value_loss"],
+                config["use_huber_loss"],
             )
             if not torch.isfinite(loss):
                 raise FloatingPointError("Nonfinite MAPPO critic loss")
@@ -285,6 +330,7 @@ def _update(model, normalizer, actor_optimizers, critic_optimizer, batch, config
 
 def train(config, out):
     config = resolve_config(config)
+    validate_training_scope(config)
     out = Path(out)
     if out.exists():
         raise FileExistsError(f"Run directory already exists: {out}")
@@ -330,8 +376,17 @@ def _train_environment(config, out, env, device, observations, model):
     for i, name in enumerate(names):
         env.action_space(name).seed(config["seed"] + i)
     fields = [
-        "update", "steps", "episodes", "policy_loss", "value_loss", "entropy", "approx_kl",
-        "clip_fraction", "actor_grad_norm", "critic_grad_norm", "learning_rate",
+        "update",
+        "steps",
+        "episodes",
+        "policy_loss",
+        "value_loss",
+        "entropy",
+        "approx_kl",
+        "clip_fraction",
+        "actor_grad_norm",
+        "critic_grad_norm",
+        "learning_rate",
     ]
     steps = episodes = update = 0
     returns = dict.fromkeys(names, 0.0)
@@ -350,10 +405,20 @@ def _train_environment(config, out, env, device, observations, model):
                 for optimizer in actor_optimizers.values():
                     optimizer.param_groups[0]["lr"] = config["actor_lr"] * fraction
                 critic_optimizer.param_groups[0]["lr"] = config["critic_lr"] * fraction
-            buffer = {key: [] for key in (
-                "states", "actions", "log_probs", "old_normalized_values", "values",
-                "next_values", "rewards", "terminated", "episode_end",
-            )}
+            buffer = {
+                key: []
+                for key in (
+                    "states",
+                    "actions",
+                    "log_probs",
+                    "old_normalized_values",
+                    "values",
+                    "next_values",
+                    "rewards",
+                    "terminated",
+                    "episode_end",
+                )
+            }
             obs_buffer = {name: [] for name in names}
             horizon = min(config["rollout_steps"], config["total_steps"] - steps)
             if next_checkpoint:
@@ -371,22 +436,25 @@ def _train_environment(config, out, env, device, observations, model):
                     logits = model.local_logits(local)
                     distributions = {name: Categorical(logits=logits[name]) for name in names}
                     actions = torch.stack([distributions[name].sample() for name in names])
-                    log_probs = torch.stack([
-                        distributions[name].log_prob(actions[i]) for i, name in enumerate(names)
-                    ])
+                    log_probs = torch.stack(
+                        [distributions[name].log_prob(actions[i]) for i, name in enumerate(names)]
+                    )
                     normalized_values = model.values(global_state)
                     values = (
                         normalizer.denormalize(normalized_values)
-                        if config["value_normalization"] else normalized_values
+                        if config["value_normalization"]
+                        else normalized_values
                     )
-                next_obs, rewards, terminated, truncated, _ = env.step({
-                    name: int(actions[i]) for i, name in enumerate(names)
-                })
+                next_obs, rewards, terminated, truncated, _ = env.step(
+                    {name: int(actions[i]) for i, name in enumerate(names)}
+                )
                 if set(terminated) != set(names) or set(truncated) != set(names):
                     raise ValueError("MAPPO requires fixed-population termination dictionaries")
                 ends = [terminated[name] or truncated[name] for name in names]
                 if any(ends) != all(ends):
-                    raise ValueError("MAPPO currently requires synchronous fixed-population episodes")
+                    raise ValueError(
+                        "MAPPO currently requires synchronous fixed-population episodes"
+                    )
                 ended = all(ends)
                 if not ended and (set(next_obs) != set(names) or set(env.agents) != set(names)):
                     raise ValueError("Agent population changed during a MAPPO rollout")
@@ -398,7 +466,8 @@ def _train_environment(config, out, env, device, observations, model):
                         next_predictions = model.values(environment_state(env, spec))
                         next_values = (
                             normalizer.denormalize(next_predictions)
-                            if config["value_normalization"] else next_predictions
+                            if config["value_normalization"]
+                            else next_predictions
                         )
                 training_rewards = aggregate_rewards(rewards, names, config["reward_aggregation"])
                 rows = {
@@ -408,9 +477,7 @@ def _train_environment(config, out, env, device, observations, model):
                     "old_normalized_values": normalized_values,
                     "values": values,
                     "next_values": next_values,
-                    "rewards": torch.tensor(
-                        training_rewards, dtype=torch.float32, device=device
-                    ),
+                    "rewards": torch.tensor(training_rewards, dtype=torch.float32, device=device),
                     "terminated": torch.tensor(
                         [float(terminated[n]) for n in names], dtype=torch.float32, device=device
                     ),
@@ -432,19 +499,28 @@ def _train_environment(config, out, env, device, observations, model):
                     returns = dict.fromkeys(names, 0.0)
                     observations, _ = env.reset(seed=config["seed"] + episodes)
             batch = {key: torch.stack(values) for key, values in buffer.items()}
-            batch["observations"] = {name: torch.stack(values) for name, values in obs_buffer.items()}
-            diagnostics = _update(model, normalizer, actor_optimizers, critic_optimizer, batch, config)
+            batch["observations"] = {
+                name: torch.stack(values) for name, values in obs_buffer.items()
+            }
+            diagnostics = _update(
+                model, normalizer, actor_optimizers, critic_optimizer, batch, config
+            )
             update += 1
-            update_writer.writerow({"update": update, "steps": steps, "episodes": episodes, **diagnostics})
+            update_writer.writerow(
+                {"update": update, "steps": steps, "episodes": episodes, **diagnostics}
+            )
             update_file.flush()
             if next_checkpoint and steps >= next_checkpoint:
                 _checkpoint(
                     out / "checkpoints" / f"step_{steps:09d}.pt", model, normalizer, config, steps
                 )
-                next_checkpoint = (steps // config["checkpoint_interval"] + 1) * config["checkpoint_interval"]
+                next_checkpoint = (steps // config["checkpoint_interval"] + 1) * config[
+                    "checkpoint_interval"
+                ]
             print(
                 f"steps={steps} episodes={episodes} policy_loss={diagnostics['policy_loss']:.5f} "
-                f"value_loss={diagnostics['value_loss']:.5f}", flush=True,
+                f"value_loss={diagnostics['value_loss']:.5f}",
+                flush=True,
             )
     _checkpoint(out / "model.pt", model, normalizer, config, steps)
     return out / "model.pt"

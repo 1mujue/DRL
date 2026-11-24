@@ -1,4 +1,5 @@
 """校验多个 eval.json 的 benchmark_id、training_steps、training_seed 是否一致。"""
+
 import argparse
 import json
 from pathlib import Path
@@ -12,13 +13,15 @@ def main():
     rows = []
     for f in args.evals:
         d = json.loads(Path(f).read_text(encoding="utf-8"))
-        rows.append({
-            "run": Path(f).parent.name,
-            "algorithm": d.get("algorithm"),
-            "benchmark_id": d.get("benchmark_id"),
-            "training_steps": d.get("training_steps"),
-            "training_seed": d.get("training_seed"),
-        })
+        rows.append(
+            {
+                "run": Path(f).parent.name,
+                "algorithm": d.get("algorithm"),
+                "benchmark_id": d.get("benchmark_id"),
+                "training_steps": d.get("training_steps"),
+                "training_seed": d.get("training_seed"),
+            }
+        )
 
     for r in rows:
         print(r)

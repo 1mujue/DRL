@@ -111,9 +111,10 @@ def test_invalid_configuration_fails_before_training(override):
 
 @pytest.mark.parametrize("environment", ["spread", "tag", "lbf", "rware"])
 def test_iql_updates_saves_loads_and_evaluates_all_environments(tmp_path, environment):
-    if environment in {"lbf", "rware"} and importlib.util.find_spec(
-        "lbforaging" if environment == "lbf" else "rware"
-    ) is None:
+    if (
+        environment in {"lbf", "rware"}
+        and importlib.util.find_spec("lbforaging" if environment == "lbf" else "rware") is None
+    ):
         pytest.skip("optional environment not installed")
     config = resolve_config(small_config(environment))
     seed_all(config["seed"])

@@ -14,9 +14,7 @@ class MAACPolicy(Policy):
         with torch.no_grad():
             actions = {}
             for agent, observation in observations.items():
-                logits = self.actors[agent].actor(
-                    torch.as_tensor(observation, dtype=torch.float32)
-                )
+                logits = self.actors[agent].actor(torch.as_tensor(observation, dtype=torch.float32))
                 actions[agent] = (
                     int(logits.argmax())
                     if deterministic

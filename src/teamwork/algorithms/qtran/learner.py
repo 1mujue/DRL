@@ -69,7 +69,9 @@ class QTRANLearner(ValueDecompositionLearner):
             next_actions = greedy[:, 1:]
             if not self.config["double_q"]:
                 next_available = availability[:, 1:] if availability is not None else None
-                next_actions = self.target_controller.greedy_actions(target_values[:, 1:], next_available)
+                next_actions = self.target_controller.greedy_actions(
+                    target_values[:, 1:], next_available
+                )
             next_total = self.target_mixer(states[:, 1:], target_histories[:, 1:], next_actions)
             greedy_total = self.mixer(states[:, :-1], histories[:, :-1], greedy[:, :-1])
             targets = td_targets(

@@ -220,7 +220,10 @@ def load_policy(checkpoint, env, observations, expected_algorithm=None):
     if expected_algorithm is not None and data["config"]["algorithm"] != expected_algorithm:
         raise ValueError("Checkpoint algorithm mismatch")
     agents = create_agents(
-        env, observations, data["config"]["algorithm"], "cpu",
+        env,
+        observations,
+        data["config"]["algorithm"],
+        "cpu",
         training_agents(env, data["config"]),
     )
     for a, model in agents.items():

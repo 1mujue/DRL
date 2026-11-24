@@ -29,15 +29,16 @@ IQL 指 Independent Q-Learning。每个 agent 的回放只保存自身 `(obs, ac
 
 业务后端的统一调用方式与交付验收见 [算法 API 接入说明](API_INTEGRATION.md)。
 
-## 安装与单次运行
+## 训练与评估
 
-使用仓库安装入口 `python3 scripts/setup.py` 创建 Python 3.12 与 `.venv`。下列命令在仓库根目录运行；
-Windows 将 `.venv/bin/python` 替换为 `.venv\Scripts\python.exe`。
+### 单次运行
+
+按照 [安装指南](SETUP.md) 激活项目解释器，从仓库根目录运行。
 
 ```bash
-.venv/bin/python -m teamwork.cli train --config configs/algorithms/ippo.yaml --env spread --seed 0 --out runs/ippo_spread_s0
-.venv/bin/python -m teamwork.cli train --config configs/algorithms/iql.yaml --env spread --seed 0 --out runs/iql_spread_s0
-.venv/bin/python -m teamwork.cli evaluate --checkpoint runs/iql_spread_s0/model.pt --episodes 100 --seed 10000 --out runs/iql_spread_s0/eval.json
+python -m teamwork.cli train --config configs/algorithms/ippo.yaml --env spread --seed 0 --out runs/ippo_spread_s0
+python -m teamwork.cli train --config configs/algorithms/iql.yaml --env spread --seed 0 --out runs/iql_spread_s0
+python -m teamwork.cli evaluate --checkpoint runs/iql_spread_s0/model.pt --episodes 100 --seed 10000 --out runs/iql_spread_s0/eval.json
 ```
 
 `--env` 支持四种场景，并使用所选场景的协议默认参数。`--steps` 可覆盖训练预算。
@@ -46,8 +47,8 @@ IQL 的短程检查需至少达到 warmup 且足够组成一个 batch；默认�
 Tag 训练选定一个阵营，另一阵营始终使用固定的规则或随机策略：
 
 ```bash
-.venv/bin/python -m teamwork.cli train --config configs/algorithms/iql.yaml --env tag --team predators --opponent rule --out runs/iql_tag_s0
-.venv/bin/python -m teamwork.cli evaluate --checkpoint runs/iql_tag_s0/model.pt --team predators --opponent rule --episodes 100 --out runs/iql_tag_s0/eval.json
+python -m teamwork.cli train --config configs/algorithms/iql.yaml --env tag --team predators --opponent rule --out runs/iql_tag_s0
+python -m teamwork.cli evaluate --checkpoint runs/iql_tag_s0/model.pt --team predators --opponent rule --episodes 100 --out runs/iql_tag_s0/eval.json
 ```
 
 仅创建、更新和保存所选阵营的网络。固定对手的动作在每步统一合并，双方原始回报都写入 CSV。
@@ -56,18 +57,18 @@ IPPO 使用相同参数。配置字段为 `train_team/train_opponent`；省略�
 公共 `Algorithm/Policy` 方法签名与指标公式保持兼容；`Policy.act` 允许仅返回受控阵营动作，
 评估器补齐固定对手动作。新增训练参数与评估字段是与组员对接时需要同步的内容。
 
-## 批量实验
+### 批量实验
 
 先做单种子短程流程检查：
 
 ```bash
-.venv/bin/python scripts/run_ippo_iql.py --steps 2048 --seeds 0 --episodes 3 --out runs/ippo_iql_check
+python scripts/run_ippo_iql.py --steps 2048 --seeds 0 --episodes 3 --out runs/ippo_iql_check
 ```
 
 正式实验默认四场景、两个算法、训练种子 0–4，每个模型 100000 联合 step、100 个测试回合，测试种子从 10000 起：
 
 ```bash
-.venv/bin/python scripts/run_ippo_iql.py --out runs/ippo_iql_experiment
+python scripts/run_ippo_iql.py --out runs/ippo_iql_experiment
 ```
 
 运行前由全组确认预算。默认实验共 40 个模型，合计 4000000 联合 step；耗时取决于硬件和环境。
@@ -83,12 +84,12 @@ IPPO 使用相同参数。配置字段为 `train_team/train_opponent`；省略�
 检查点支持执行策略加载；重新运行会开始一次新训练。正式报告应包含四场景分别的结果、失败案例、
 训练耗时与机器条件；单种子短程检查不提供收敛或优劣结论。
 
-## 验证
+## 验证与边界
 
 ```bash
-.venv/bin/ruff check .
-.venv/bin/python -m pytest -q
-.venv/bin/python scripts/smoke.py --skip-tests
+python -m ruff check .
+python -m pytest -q
+python scripts/smoke.py --skip-tests
 ```
 
 测试覆盖 IQL 的 TD 目标、回放拷贝与淘汰、探索率、参数更新、模型加载、同种子复现、

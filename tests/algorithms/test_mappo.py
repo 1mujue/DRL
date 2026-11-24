@@ -36,9 +36,7 @@ def test_value_normalizer_combines_batches_and_round_trips():
     torch.testing.assert_close(whole.normalize(values), expected)
     torch.testing.assert_close(split.normalize(values), expected)
     outside_batch = torch.tensor([-5.0, 0.0, 20.0])
-    torch.testing.assert_close(
-        split.denormalize(split.normalize(outside_batch)), outside_batch
-    )
+    torch.testing.assert_close(split.denormalize(split.normalize(outside_batch)), outside_batch)
     restored = ValueNormalizer()
     restored.load_state_dict(split.state_dict())
     torch.testing.assert_close(restored.normalize(outside_batch), split.normalize(outside_batch))
@@ -135,8 +133,11 @@ def test_training_updates_actor_keeps_clip_coordinates_and_saves_checkpoints(tmp
         observations, _ = env.reset(seed=config["seed"])
         torch.manual_seed(config["seed"])
         initial = MAPPOModel(env.describe(), config)
-        initial_actor = {key: value.clone() for key, value in initial.state_dict().items()
-                         if key.startswith("actors.")}
+        initial_actor = {
+            key: value.clone()
+            for key, value in initial.state_dict().items()
+            if key.startswith("actors.")
+        }
         first_critic_call = []
         original_loss = trainer.value_loss
 
@@ -154,8 +155,9 @@ def test_training_updates_actor_keeps_clip_coordinates_and_saves_checkpoints(tmp
         assert saved["steps"] == 16
         assert saved["format"] == "teamwork.mappo.v1"
         assert first_critic_call
-        assert any(not torch.equal(saved["model"][key], value)
-                   for key, value in initial_actor.items())
+        assert any(
+            not torch.equal(saved["model"][key], value) for key, value in initial_actor.items()
+        )
         assert all(torch.isfinite(value).all() for value in saved["model"].values())
         for step in (8, 16):
             periodic = checkpoint.parent / "checkpoints" / f"step_{step:09d}.pt"
@@ -207,7 +209,8 @@ def test_checkpoint_schedule_splits_rollout_without_exceeding_budget(tmp_path):
 def test_direct_training_resolves_protocol_conditions_without_mutating_config(env_kwargs):
     # API 自己采用公共协议默认值，不要求调用者先经过 CLI/runner。
     config = {
-        "env": "spread", "total_steps": 8,
+        "env": "spread",
+        "total_steps": 8,
     }
     if env_kwargs is not None:
         config["env_kwargs"] = env_kwargs
@@ -216,15 +219,23 @@ def test_direct_training_resolves_protocol_conditions_without_mutating_config(en
     assert config == before
     assert resolved["algorithm"] == "mappo_ff" and resolved["seed"] == 0
     assert resolved["env_kwargs"] == {
-        "N": 3, "local_ratio": 0.5, "max_cycles": 7 if env_kwargs else 50,
+        "N": 3,
+        "local_ratio": 0.5,
+        "max_cycles": 7 if env_kwargs else 50,
     }
 
 
 def test_yaml_api_and_simulator_free_loading_are_legacy_compatible(tmp_path):
     source = Path(__file__).resolve().parents[2] / "configs" / "algorithms" / "mappo.yaml"
     config = yaml.safe_load(source.read_text(encoding="utf-8"))
-    config.update(total_steps=5, rollout_steps=5, epochs=1, hidden_size=8, hidden_layers=1,
-                  checkpoint_interval=0)
+    config.update(
+        total_steps=5,
+        rollout_steps=5,
+        epochs=1,
+        hidden_size=8,
+        hidden_layers=1,
+        checkpoint_interval=0,
+    )
     before = deepcopy(config)
     checkpoint = MAPPOAlgorithm().train(config, tmp_path / "yaml-api")
     assert config == before
@@ -244,7 +255,10 @@ def test_yaml_api_and_simulator_free_loading_are_legacy_compatible(tmp_path):
     saved["training_contract"] = {"reward": "environment", "execution": "local_observation"}
     legacy = checkpoint.parent / "legacy.pt"
     torch.save(saved, legacy)
-    assert MAPPOAlgorithm().load_policy(legacy, observations=observations).act(observations) == expected
+    assert (
+        MAPPOAlgorithm().load_policy(legacy, observations=observations).act(observations)
+        == expected
+    )
     assert all(0 <= expected[a] < n for a, n in zip(spec.agents, spec.action_counts))
     mismatched = make_env("spread", N=2)
     try:
@@ -277,9 +291,14 @@ def test_policy_rejects_invalid_observations(problem):
         policy.act(observations)
 
 
-@pytest.mark.parametrize("mode, expected", [
-    ("individual", [1.0, 3.0]), ("mean", [2.0, 2.0]), ("sum", [4.0, 4.0]),
-])
+@pytest.mark.parametrize(
+    "mode, expected",
+    [
+        ("individual", [1.0, 3.0]),
+        ("mean", [2.0, 2.0]),
+        ("sum", [4.0, 4.0]),
+    ],
+)
 def test_reward_transform_math(mode, expected):
     np.testing.assert_allclose(aggregate_rewards({"a": 1.0, "b": 3.0}, ("a", "b"), mode), expected)
     np.testing.assert_allclose(
@@ -373,8 +392,13 @@ def test_episode_boundary_bootstrap_and_raw_csv_reward_contract(tmp_path, monkey
 
     monkeypatch.setattr(trainer, "_update", inspect_update)
     config = {
-        "env": "spread", "total_steps": 2, "rollout_steps": 2, "epochs": 1,
-        "hidden_size": 8, "hidden_layers": 1, "reward_aggregation": "mean",
+        "env": "spread",
+        "total_steps": 2,
+        "rollout_steps": 2,
+        "epochs": 1,
+        "hidden_size": 8,
+        "hidden_layers": 1,
+        "reward_aggregation": "mean",
         "checkpoint_interval": 0,
     }
     before = deepcopy(config)
@@ -385,15 +409,25 @@ def test_episode_boundary_bootstrap_and_raw_csv_reward_contract(tmp_path, monkey
         episodes = list(csv.DictReader(stream))
     assert [(float(row["a"]), float(row["b"])) for row in episodes] == [(1.0, 3.0)] * 2
     saved = torch.load(checkpoint, map_location="cpu", weights_only=True)
-    contract = json.loads((checkpoint.parent / "training_contract.json").read_text(encoding="utf-8"))
+    contract = json.loads(
+        (checkpoint.parent / "training_contract.json").read_text(encoding="utf-8")
+    )
     assert contract == saved["training_contract"]
     assert contract["reward_aggregation"] == "mean"
     assert contract["reward_scope"] == "one_cooperative_team"
 
 
-@pytest.mark.parametrize("invalid", [
-    "reset", "spec", "observation", "state", "state_shape", "mixed_roles",
-])
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        "reset",
+        "spec",
+        "observation",
+        "state",
+        "state_shape",
+        "mixed_roles",
+    ],
+)
 def test_invalid_environment_setup_closes_without_creating_run(tmp_path, monkeypatch, invalid):
     from teamwork.algorithms.mappo import trainer
 
@@ -401,14 +435,23 @@ def test_invalid_environment_setup_closes_without_creating_run(tmp_path, monkeyp
     monkeypatch.setattr(trainer, "make_env", lambda *args, **kwargs: env)
     out = tmp_path / invalid
     with pytest.raises(ValueError):
-        MAPPOAlgorithm().train({"env": "spread", "total_steps": 1, "reward_aggregation": "mean"}, out)
+        MAPPOAlgorithm().train(
+            {"env": "spread", "total_steps": 1, "reward_aggregation": "mean"}, out
+        )
     assert env.closed and not out.exists()
 
 
-@pytest.mark.parametrize("overrides", [
-    {"algorithm": "qmix"}, {"env_kwargs": None}, {"env_kwargs": []},
-    {"extra": {1, 2}}, {"extra": float("nan")}, {"reward_aggregation": "mean", "env": "tag"},
-])
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"algorithm": "qmix"},
+        {"env_kwargs": None},
+        {"env_kwargs": []},
+        {"extra": {1, 2}},
+        {"extra": float("nan")},
+        {"reward_aggregation": "mean", "env": "tag"},
+    ],
+)
 def test_invalid_config_fails_before_artifacts(tmp_path, overrides):
     out = tmp_path / "invalid-config"
     with pytest.raises((TypeError, ValueError)):
@@ -451,9 +494,11 @@ def test_collection_freezes_reused_observation_arrays_before_step(tmp_path, monk
             self.done = self.counter == 2
             self.agents = [] if self.done else self.possible_agents[:]
             return (
-                {} if self.done else self.observations, {"a": 1.0, "b": 3.0},
+                {} if self.done else self.observations,
+                {"a": 1.0, "b": 3.0},
                 dict.fromkeys(self.possible_agents, self.done),
-                dict.fromkeys(self.possible_agents, False), {},
+                dict.fromkeys(self.possible_agents, False),
+                {},
             )
 
     env = MutableEnvironment()
@@ -467,7 +512,9 @@ def test_collection_freezes_reused_observation_arrays_before_step(tmp_path, monk
                 batch["observations"][agent], torch.tensor([[0.0] * 3, [1.0] * 3])
             )
         for step in range(2):
-            logits = model.local_logits({a: values[step] for a, values in batch["observations"].items()})
+            logits = model.local_logits(
+                {a: values[step] for a, values in batch["observations"].items()}
+            )
             for index, agent in enumerate(model.spec.agents):
                 distribution = torch.distributions.Categorical(logits=logits[agent])
                 torch.testing.assert_close(
@@ -478,9 +525,17 @@ def test_collection_freezes_reused_observation_arrays_before_step(tmp_path, monk
         return original_update(model, normalizer, actor_optimizers, critic_optimizer, batch, config)
 
     monkeypatch.setattr(trainer, "_update", inspect_update)
-    MAPPOAlgorithm().train({
-        "env": "spread", "total_steps": 2, "rollout_steps": 2, "epochs": 1,
-        "hidden_size": 8, "hidden_layers": 1, "checkpoint_interval": 0,
-        "feature_normalization": False,
-    }, tmp_path / "mutable-observations")
+    MAPPOAlgorithm().train(
+        {
+            "env": "spread",
+            "total_steps": 2,
+            "rollout_steps": 2,
+            "epochs": 1,
+            "hidden_size": 8,
+            "hidden_layers": 1,
+            "checkpoint_interval": 0,
+            "feature_normalization": False,
+        },
+        tmp_path / "mutable-observations",
+    )
     assert checked and env.closed

@@ -32,8 +32,15 @@ def test_qmix_scenario_trains_and_deploys_through_public_api(tmp_path, scenario)
         pytest.skip(f"optional environment {package} not installed")
     horizon = {"spread": "max_cycles", "lbf": "max_episode_steps", "rware": "max_steps"}[family]
     config["env_kwargs"][horizon] = 3
-    config.update(total_steps=7, batch_size=2, learning_starts_episodes=2,
-                  hidden_size=8, mixing_size=4, hypernet_size=8, checkpoint_interval=0)
+    config.update(
+        total_steps=7,
+        batch_size=2,
+        learning_starts_episodes=2,
+        hidden_size=8,
+        mixing_size=4,
+        hypernet_size=8,
+        checkpoint_interval=0,
+    )
     algorithm = make_algorithm(config["algorithm"])
     checkpoint = algorithm.train(config, tmp_path / scenario)
     saved = torch.load(checkpoint, map_location="cpu", weights_only=True)

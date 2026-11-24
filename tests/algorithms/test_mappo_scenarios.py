@@ -23,7 +23,12 @@ def load_config(method, scenario):
 def test_paired_scenarios_keep_the_same_task_reward_and_budget(scenario):
     mappo, qmix = (load_config(method, scenario) for method in ("mappo", "qmix"))
     for field in (
-        "env", "env_kwargs", "seed", "total_steps", "reward_aggregation", "gamma",
+        "env",
+        "env_kwargs",
+        "seed",
+        "total_steps",
+        "reward_aggregation",
+        "gamma",
         "checkpoint_interval",
     ):
         assert mappo[field] == qmix[field], field
@@ -51,8 +56,14 @@ def test_mappo_scenario_trains_and_deploys_through_public_api(tmp_path, scenario
     # 只缩短测试回合和预算；场景原配置的视野、agent、奖励条件仍保留。
     horizon = {"spread": "max_cycles", "lbf": "max_episode_steps", "rware": "max_steps"}[family]
     config["env_kwargs"][horizon] = 3
-    config.update(total_steps=7, rollout_steps=4, epochs=1, hidden_size=8,
-                  batch_size=16, checkpoint_interval=0)
+    config.update(
+        total_steps=7,
+        rollout_steps=4,
+        epochs=1,
+        hidden_size=8,
+        batch_size=16,
+        checkpoint_interval=0,
+    )
     algorithm = make_algorithm(config["algorithm"])
     checkpoint = algorithm.train(config, tmp_path / scenario)
     saved = torch.load(checkpoint, map_location="cpu", weights_only=True)

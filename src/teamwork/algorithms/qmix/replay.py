@@ -24,8 +24,10 @@ class EpisodeReplay:
         shapes = {
             "observations": (length + 1, n_agents, max(self.spec.observation_sizes)),
             "states": (length + 1, self.spec.state_size),
-            "actions": (length, n_agents), "rewards": (length,),
-            "terminated": (length,), "truncated": (length,),
+            "actions": (length, n_agents),
+            "rewards": (length,),
+            "terminated": (length,),
+            "truncated": (length,),
         }
         if length < 1 or any(np.shape(episode[key]) != shape for key, shape in shapes.items()):
             raise ValueError("Replay requires nonempty episodes with a final observation/state")
@@ -48,10 +50,16 @@ class EpisodeReplay:
             availability = np.asarray(episode["available_actions"])
             shape = (length + 1, n_agents, max(self.spec.action_counts))
             if availability.shape != shape or availability.dtype != np.bool_:
-                raise ValueError("Replay availability requires a boolean mask for every observation")
+                raise ValueError(
+                    "Replay availability requires a boolean mask for every observation"
+                )
             in_space = np.arange(shape[-1])[None, :] < np.asarray(self.spec.action_counts)[:, None]
             picked = np.take_along_axis(availability[:-1], actions[..., None], axis=-1)
-            if (availability & ~in_space).any() or not picked.all() or not availability.any(axis=-1).all():
+            if (
+                (availability & ~in_space).any()
+                or not picked.all()
+                or not availability.any(axis=-1).all()
+            ):
                 raise ValueError("Replay contains missing or invalid available actions")
             copied["available_actions"] = availability.copy()
         self.episodes.append(copied)
@@ -83,6 +91,6 @@ class EpisodeReplay:
         for index, episode in enumerate(chosen):
             length = len(episode["actions"])
             for key, values in episode.items():
-                result[key][index, :len(values)] = values
+                result[key][index, : len(values)] = values
             result["filled"][index, :length] = 1.0
         return {key: torch.as_tensor(value, device=device) for key, value in result.items()}

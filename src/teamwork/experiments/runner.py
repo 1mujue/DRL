@@ -57,7 +57,9 @@ def write_provenance(out, device):
 def run_training(config, out):
     # 延迟导入，避免公共实验入口依赖某种算法的内部模块。
     from ..algorithms.registry import make_algorithm
+    from ..algorithms.training import validate_training_scope
 
+    validate_training_scope(config)
     config = {**config, "env_kwargs": resolved_env_kwargs(config["env"], config.get("env_kwargs"))}
     if config["total_steps"] < 1:
         raise ValueError("total_steps must be positive")

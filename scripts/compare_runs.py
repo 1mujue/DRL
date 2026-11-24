@@ -1,4 +1,5 @@
 """调用 evaluation.compare 的统一聚合器，输出最终对比表。"""
+
 import argparse
 import json
 from pathlib import Path

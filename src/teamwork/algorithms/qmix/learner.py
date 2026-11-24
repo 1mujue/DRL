@@ -16,11 +16,12 @@ def unroll(controller, observations, actions, *, return_history=False):
         # 前馈网络没有跨步隐藏依赖，将 B、T 合并为一个 batch，保留局部上一动作。
         previous = observations.new_zeros(batch_size, time_size, n_agents, controller.max_actions)
         if time_size > 1:
-            previous[:, 1:] = F.one_hot(
-                actions[:, :time_size - 1], controller.max_actions
-            ).to(observations.dtype)
+            previous[:, 1:] = F.one_hot(actions[:, : time_size - 1], controller.max_actions).to(
+                observations.dtype
+            )
         values, history = controller(
-            observations.flatten(0, 1), previous.flatten(0, 1),
+            observations.flatten(0, 1),
+            previous.flatten(0, 1),
             controller.initial_hidden(batch_size * time_size),
         )
         values = values.reshape(batch_size, time_size, n_agents, controller.max_actions)
@@ -73,7 +74,9 @@ class ValueDecompositionLearner:
         self.target_mixer = deepcopy(self.mixer).requires_grad_(False).eval()
         self.parameters = list(self.controller.parameters()) + list(self.mixer.parameters())
         self.optimizer = torch.optim.RMSprop(
-            self.parameters, lr=config["lr"], alpha=config["rmsprop_alpha"],
+            self.parameters,
+            lr=config["lr"],
+            alpha=config["rmsprop_alpha"],
             eps=config["optimizer_eps"],
         )
         self.updates = 0
@@ -96,11 +99,13 @@ class ValueDecompositionLearner:
             self.sync_targets()
         valid = filled.bool()
         return {
-            "loss": float(loss.detach()), "grad_norm": float(grad_norm),
+            "loss": float(loss.detach()),
+            "grad_norm": float(grad_norm),
             "td_error_abs": float((total.detach()[valid] - targets[valid]).abs().mean()),
             "q_total_mean": float(total.detach()[valid].mean()),
             "target_mean": float(targets[valid].mean()),
-            "valid_transitions": int(valid.sum()), **extra_metrics,
+            "valid_transitions": int(valid.sum()),
+            **extra_metrics,
         }
 
 
@@ -115,15 +120,17 @@ class QMIXLearner(ValueDecompositionLearner):
         chosen = all_values[:, :-1].gather(-1, batch["actions"].unsqueeze(-1)).squeeze(-1)
         total = self.mixer(chosen, batch["states"][:, :-1])
         with torch.no_grad():
-            target_values = unroll(
-                self.target_controller, batch["observations"], batch["actions"]
-            )[:, 1:]
+            target_values = unroll(self.target_controller, batch["observations"], batch["actions"])[
+                :, 1:
+            ]
             availability = batch.get("available_actions")
             next_available = availability[:, 1:] if availability is not None else None
             selection = all_values[:, 1:].detach() if self.config["double_q"] else target_values
             greedy = self.controller.greedy_actions(selection, next_available)
             next_local = target_values.gather(-1, greedy.unsqueeze(-1)).squeeze(-1)
             next_total = self.target_mixer(next_local, batch["states"][:, 1:])
-            targets = td_targets(batch["rewards"], batch["terminated"], next_total, self.config["gamma"])
+            targets = td_targets(
+                batch["rewards"], batch["terminated"], next_total, self.config["gamma"]
+            )
         loss = masked_td_loss(total, targets, batch["filled"])
         return self.optimize(loss, total, targets, batch["filled"])

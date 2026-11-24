@@ -1,7 +1,7 @@
 # 固定评估协议 v1.0.0
 
 **指标随场景固定，算法不得自行改分数。** 唯一公式在 `src/teamwork/evaluation/metrics.py`，可用 `cli metrics --env <场景>` 查询。
-本页为精简说明，指标代码和版本未变。默认固定 agent、向量观测、离散动作，reset 状态不计分，每次联合 step 后采样。
+本页说明 v1.0.0 指标和实验对齐要求。默认固定 agent、向量观测、离散动作，reset 状态不计分，每次联合 step 后采样。
 
 ## 场景与指标
 
@@ -20,11 +20,13 @@ RWARE 2.0 支持 INDIVIDUAL/GLOBAL 交付计数，拒绝不能从奖励区分交
 
 - 同一场景设置、动作/信息条件、指标版本、测试种子和训练预算。换场景需分表，不把不同单位拼成总分。
 - Tag 固定另一方：`--team predators --opponent rule`，或对应 prey 设置；双方同时更换只作观察。
-  IPPO/IQL 的 `train` 和 `evaluate` 均支持这两个参数；固定对手训练的模型要求用同一阵营与对手评估。
+  CLI 的 `ippo`、`iql`、`mappo` 支持固定对手训练。SDK 提供其中的 IPPO 和 IQL。固定对手训练的模型要求用同一阵营与对手评估。
   检查点配置记录 `train_team/train_opponent`，评估结果的 `training_setup` 记录训练条件。
-- 评估默认 greedy，训练采样；随机基线固定动作空间种子。训练奖励改造必须另行统一并记录，见 [算法清单](ALGORITHMS.md)。
+- 评估默认 greedy，训练按各算法的采样规则执行。随机基线固定动作空间种子。
+- 学习模型的评估 JSON 在 `training_conditions` 中记录生效的奖励聚合、原配置的聚合方式、奖励除数及动作屏蔽，在 `training_setup` 中记录阵营及对手。环境参数和观测空间见 `benchmark.env_kwargs` 与 `benchmark.spaces`。全视野和局部视野请显式写入 LBF 的 `sight`。
 - JSON 记录协议、环境参数/空间、相关依赖、测试种子、对手和源码校验值，生成 `benchmark_id`。
-  `compare` 拒绝不同 benchmark、预算不一致、重复训练种子、旧格式和未固定对手的 Tag 结果；不能代替算法正确性审查。
+  `compare` 检查 benchmark、预算、训练条件、独立训练种子以及 Tag 评估对手。
+- 横向比较学习模型时统一奖励聚合、奖励缩放、动作屏蔽及训练阵营。Spread 使用 `local_ratio=0` 时，取单个智能体的奖励、取团队平均或原样使用共享奖励等价。奖励缩放仍参与校验。随机和规则基线只需匹配评估协议。比较屏蔽等条件的效果时，对每个设置分别汇总，再按相同训练种子和评估种子配对。
 
 ## 统计与复现
 
@@ -35,7 +37,7 @@ RWARE 2.0 支持 INDIVIDUAL/GLOBAL 交付计数，拒绝不能从奖励区分交
   墙钟时间记录在 `training.json`，跨机器解释时附硬件条件。
 - LBF 超时和 RWARE max_steps 按截断处理，RWARE inactivity 按终止处理。
 - 改指标含义需递增版本并重新评估；旧模型可加载，旧评估 JSON 不直接混用。
-- 本次目录重排更新了源码校验值。指标数值定义仍为 v1.0.0，已有模型可重新评估，再与当前目录版本的结果比较。
+- 旧版 schema 2 评估可在同一旧 benchmark 内汇总，比较结果显示 `training_conditions: null`，表示当时的训练条件无法从结果核验。正式合并旧 checkpoint 与新实验结果时，应使用当前评估器重新生成 JSON。
 
 ## 命令示例
 
