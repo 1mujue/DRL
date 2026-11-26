@@ -11,12 +11,13 @@ import numpy as np
 import torch
 
 from ..algorithms.baselines import SCRIPTED_HANDOVER_POLICY, baseline_actions, make_baseline_policy
+from ..algorithms.names import CENTRALIZED_PPO, canonical_algorithm_name
 from ..algorithms.registry import make_algorithm
 from ..algorithms.training import validate_training_scope
 from ..environments.registry import environment_registration, make_env
 from ..experiments.runner import seed_all
-from .lift_timing import GRASP_CONFIRMATION_STEPS, LiftTimingTrial
 from .metrics import make_metrics, protocol_description, resolved_env_kwargs, summarize
+from .robotics.two_arm_lift.timing import GRASP_CONFIRMATION_STEPS, LiftTimingTrial
 
 
 def save_result(result, path):
@@ -31,15 +32,17 @@ def _code_hash(extra_sources=()):
     # 同一版本号下源码意外改变，也不得悄悄与旧口径结果合并。
     root = Path(__file__).resolve().parents[1]
     files = (
-        "evaluation/metrics.py",
         "evaluation/evaluator.py",
-        "environments/mpe.py",
-        "environments/gym_tuple.py",
+        "evaluation/metrics/base.py",
+        "evaluation/metrics/registry.py",
+        "environments/base.py",
         "environments/registry.py",
-        "algorithms/baselines.py",
+        "algorithms/baselines/__init__.py",
         *extra_sources,
     )
-    content = b"".join((root / file).read_bytes() for file in files)
+    sources = [root / file for file in files]
+    sources.extend(sorted((root / "evaluation/metrics").glob("*/rules.py")))
+    content = b"".join(path.read_bytes() for path in sources)
     return hashlib.sha256(content).hexdigest()
 
 
@@ -79,9 +82,9 @@ def _training_initialization(data):
 
 def _training_conditions(config, env_kwargs):
     """从已保存配置还原训练奖励模式，包括旧版 checkpoint 的默认值。"""
-    algorithm = config["algorithm"]
+    algorithm = canonical_algorithm_name(config["algorithm"])
     reward_divisor = 1.0
-    if algorithm in {"ippo", "iql", "mappo"}:
+    if algorithm in {"ippo", "iql", CENTRALIZED_PPO}:
         reward = "individual"
     elif algorithm in {"coma", "maac"}:
         reward = "first_agent"
@@ -293,7 +296,7 @@ def evaluate(
     return {
         "schema_version": 2,
         "env": name,
-        "algorithm": data["config"]["algorithm"] if data else policy,
+        "algorithm": canonical_algorithm_name(data["config"]["algorithm"]) if data else policy,
         "algorithm_variant": _algorithm_variant(data["config"]) if data else None,
         "training_seed": data["config"]["seed"] if data else None,
         "training_steps": data.get("steps") if data else None,

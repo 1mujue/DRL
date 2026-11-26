@@ -1,4 +1,4 @@
-"""Independent actors; local (IPPO) or centralized (MAPPO-style) per-agent values.
+"""Independent actors with local or centralized per-agent values.
 
 Feedforward PPO baselines for categorical and bounded continuous actions. Fixed population, separate agent
 networks, no weight sharing, no recurrent policy, no self-play opponent pool.
@@ -20,14 +20,19 @@ from ...environments.registry import make_env
 from ...evaluation.metrics import resolved_env_kwargs
 from ...experiments.runner import seed_all, write_provenance
 from ..mat_dec.model import TransformerCritic
+from ..names import (
+    CENTRALIZED_PPO,
+    CENTRALIZED_PPO_CONTINUOUS,
+    canonical_algorithm_name,
+)
+from ..robotics.pose_actor import LiftPoseActor
 from ..training import training_agents, with_opponent_actions
 from .continuous import SquashedNormal
-from .lift_actor import LiftPoseActor
 
 HAPPO = "happo_continuous"
 MAT_DEC = "mat_dec_continuous"
-CONTINUOUS = frozenset({"ippo_continuous", "mappo_continuous", HAPPO, MAT_DEC})
-CENTRALIZED = frozenset({"mappo", "mappo_continuous", HAPPO, MAT_DEC})
+CONTINUOUS = frozenset({"ippo_continuous", CENTRALIZED_PPO_CONTINUOUS, HAPPO, MAT_DEC})
+CENTRALIZED = frozenset({CENTRALIZED_PPO, CENTRALIZED_PPO_CONTINUOUS, HAPPO, MAT_DEC})
 
 DEFAULTS = {
     "device": "cpu",
@@ -157,6 +162,7 @@ def gae(rewards, values, next_values, terminated, episode_end, gamma, lam):
 
 
 def create_agents(env, observations, algorithm, device, names=None, *, actor_type="mlp"):
+    algorithm = canonical_algorithm_name(algorithm)
     names = env.possible_agents if names is None else names
     if algorithm == MAT_DEC:
         sizes = tuple(len(observations[name]) for name in names)
@@ -273,9 +279,12 @@ def initialize_from_checkpoint(agents, config):
     path = Path(config["warm_start_checkpoint"])
     data = torch.load(path, map_location="cpu", weights_only=True)
     origin = data["config"]
-    for key in ("algorithm", "env"):
-        if origin[key] != config[key]:
-            raise ValueError(f"Warm-start checkpoint differs in {key}")
+    if canonical_algorithm_name(origin["algorithm"]) != canonical_algorithm_name(
+        config["algorithm"]
+    ):
+        raise ValueError("Warm-start checkpoint differs in algorithm")
+    if origin["env"] != config["env"]:
+        raise ValueError("Warm-start checkpoint differs in env")
     origin_settings = resolved_env_kwargs(origin["env"], origin.get("env_kwargs"))
     target_settings = config["env_kwargs"]
     if config.get("allow_lift_mass_transfer") is True and config["env"] == "two_arm_lift":
@@ -306,6 +315,7 @@ def train(config, out):
     config = {
         **DEFAULTS,
         **config,
+        "algorithm": canonical_algorithm_name(config["algorithm"]),
         "env_kwargs": resolved_env_kwargs(config["env"], config.get("env_kwargs")),
     }
     seed_all(config["seed"])
@@ -490,12 +500,13 @@ def train(config, out):
 
 def load_policy(checkpoint, env, observations, expected_algorithm=None):
     data = torch.load(checkpoint, map_location="cpu", weights_only=True)
-    if expected_algorithm is not None and data["config"]["algorithm"] != expected_algorithm:
+    algorithm = canonical_algorithm_name(data["config"]["algorithm"])
+    if expected_algorithm is not None and algorithm != canonical_algorithm_name(expected_algorithm):
         raise ValueError("Checkpoint algorithm mismatch")
     agents = create_agents(
         env,
         observations,
-        data["config"]["algorithm"],
+        algorithm,
         "cpu",
         training_agents(env, data["config"]),
         actor_type=data["config"].get("actor_type", "mlp"),

@@ -8,6 +8,7 @@ import yaml
 from train_handover_clone import train_handover_clone
 
 from teamwork.algorithms.baselines import SCRIPTED_HANDOVER_POLICY
+from teamwork.algorithms.names import canonical_algorithm_name
 from teamwork.evaluation.evaluator import evaluate, save_result
 from teamwork.evaluation.plots import plot_handover_trace
 
@@ -16,6 +17,7 @@ def run_study(plan_path, out):
     plan = yaml.safe_load(plan_path.read_text(encoding="utf-8"))
     config_path = plan_path.parent / plan["training_config"]
     config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    config["algorithm"] = canonical_algorithm_name(config["algorithm"])
     demos, evaluation = plan["demonstrations"], plan["evaluation"]
     demo_seeds = range(demos["start_seed"], demos["start_seed"] + demos["max_attempts"])
     eval_seeds = range(evaluation["seed"], evaluation["seed"] + evaluation["episodes"])

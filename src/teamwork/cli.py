@@ -8,11 +8,11 @@ import torch
 import yaml
 
 from .algorithms.baselines import SCRIPTED_HANDOVER_POLICY, SCRIPTED_LIFT_POLICIES
+from .algorithms.names import canonical_algorithm_name
 from .algorithms.registry import available_algorithms
 from .environments.registry import available_environments
 from .evaluation.compare import compare_results
 from .evaluation.evaluator import evaluate, save_result
-from .evaluation.lift_timing import LIFT_TIMING_MODES
 from .evaluation.metrics import protocol_description, resolved_env_kwargs
 from .evaluation.plots import (
     plot_comparison,
@@ -20,6 +20,7 @@ from .evaluation.plots import (
     plot_lift_trace,
     plot_training_curve,
 )
+from .evaluation.robotics.two_arm_lift.timing import LIFT_TIMING_MODES
 from .experiments.runner import run_training
 
 
@@ -40,7 +41,7 @@ def main():
     tr.add_argument("--steps", type=int)
     tr.add_argument("--seed", type=int)
     tr.add_argument("--device", choices=["cpu", "cuda"])
-    tr.add_argument("--algorithm", choices=available_algorithms())
+    tr.add_argument("--algorithm", type=canonical_algorithm_name, choices=available_algorithms())
     tr.add_argument("--env", choices=available_environments())
     tr.add_argument("--team", choices=["all", "predators", "prey"])
     tr.add_argument("--opponent", choices=["random", "rule"])

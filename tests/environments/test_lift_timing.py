@@ -1,8 +1,12 @@
 import numpy as np
 import pytest
 
-from teamwork.environments.two_arm_lift import LIFT_PHASE_START
-from teamwork.evaluation.lift_timing import ARMS, GRASP_CONFIRMATION_STEPS, LiftTimingTrial
+from teamwork.environments.robotics.two_arm_lift.environment import LIFT_PHASE_START
+from teamwork.evaluation.robotics.two_arm_lift.timing import (
+    ARMS,
+    GRASP_CONFIRMATION_STEPS,
+    LiftTimingTrial,
+)
 
 
 class FrozenActor:

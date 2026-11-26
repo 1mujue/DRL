@@ -28,7 +28,7 @@ def test_gaussian_log_prob_includes_tanh_and_affine_jacobian():
 
 
 def test_lift_actor_learns_feedback_and_clock_from_demonstrated_commands():
-    from teamwork.algorithms.ppo.lift_actor import LiftPoseActor
+    from teamwork.algorithms.robotics.pose_actor import LiftPoseActor
 
     generator = torch.Generator().manual_seed(0)
     horizon = 5

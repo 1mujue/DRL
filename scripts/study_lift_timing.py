@@ -8,10 +8,10 @@ from multiprocessing import get_context
 from pathlib import Path
 from statistics import mean
 
-from teamwork.environments.two_arm_lift import LIFT_PHASE_START
+from teamwork.environments.robotics.two_arm_lift.environment import LIFT_PHASE_START
 from teamwork.evaluation.compare import compare_results
 from teamwork.evaluation.evaluator import evaluate, save_result
-from teamwork.evaluation.lift_timing import ARMS, LIFT_TIMING_MODES
+from teamwork.evaluation.robotics.two_arm_lift.timing import ARMS, LIFT_TIMING_MODES
 
 
 def run_case(job):

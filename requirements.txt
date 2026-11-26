@@ -1,0 +1,3 @@
+# Full coursework environment, including robosuite and MuJoCo via the robotics extra.
+-c requirements.lock.txt
+-e .[dev,extra-envs,robotics]

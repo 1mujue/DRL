@@ -77,7 +77,7 @@ def test_two_arm_adapter_seed_action_limits_and_time_limit():
 def test_continuous_ppo_checkpoint_evaluates_under_same_benchmark(tmp_path):
     pytest.importorskip("robosuite")
     paths = []
-    for algorithm, critic_size in [("ippo_continuous", 1), ("mappo_continuous", 2)]:
+    for algorithm, critic_size in [("ippo_continuous", 1), ("centralized_ppo_continuous", 2)]:
         config = {
             "algorithm": algorithm,
             "env": "two_arm_lift",
@@ -103,7 +103,7 @@ def test_continuous_ppo_checkpoint_evaluates_under_same_benchmark(tmp_path):
         paths.append(path)
 
     report = compare_results(paths, "stable_dual_lift")
-    assert set(report["algorithms"]) == {"ippo_continuous", "mappo_continuous"}
+    assert set(report["algorithms"]) == {"ippo_continuous", "centralized_ppo_continuous"}
 
 
 def test_scripted_positive_control_requires_both_working_arms():

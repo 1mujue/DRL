@@ -5,6 +5,8 @@ from pathlib import Path
 
 import numpy as np
 
+from ..algorithms.names import canonical_algorithm_name
+
 
 def _comparable_training_conditions(result):
     conditions = result.get("training_conditions")
@@ -68,7 +70,7 @@ def compare_results(paths, metric):
         raise ValueError(f"Unknown metric {metric!r}; choose from {tuple(definitions)}")
     grouped = {}
     for result in results:
-        grouped.setdefault(result["algorithm"], []).append(result)
+        grouped.setdefault(canonical_algorithm_name(result["algorithm"]), []).append(result)
     algorithms = {}
     for algorithm, group in grouped.items():
         variant = group[0].get("algorithm_variant")

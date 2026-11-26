@@ -2,13 +2,14 @@
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from functools import partial
 
 from .base import Environment
-from .gym_tuple import make_gym_tuple
-from .mpe import make_mpe
-from .two_arm_handover import TwoArmHandover
-from .two_arm_lift import TwoArmLift
+from .lbf.environment import LBFEnvironment
+from .robotics.two_arm_handover.environment import TwoArmHandover
+from .robotics.two_arm_lift.environment import TwoArmLift
+from .rware.environment import RWAREEnvironment
+from .spread.environment import make_spread
+from .tag.environment import make_tag
 
 
 @dataclass(frozen=True)
@@ -58,21 +59,52 @@ def make_env(name, render_mode=None, **kwargs) -> Environment:
     return env
 
 
-register_environment("spread", partial(make_mpe, "spread"), packages=("mpe2",))
-register_environment("tag", partial(make_mpe, "tag"), packages=("mpe2",))
-register_environment("lbf", partial(make_gym_tuple, "lbf"), packages=("lbforaging",))
-register_environment("rware", partial(make_gym_tuple, "rware"), packages=("rware",))
+register_environment(
+    "spread",
+    make_spread,
+    packages=("mpe2",),
+    benchmark_sources=(
+        "environments/adapters/mpe.py",
+        "algorithms/baselines/mpe.py",
+        "environments/spread/environment.py",
+        "algorithms/baselines/spread/policy.py",
+    ),
+)
+register_environment(
+    "tag",
+    make_tag,
+    packages=("mpe2",),
+    benchmark_sources=(
+        "environments/adapters/mpe.py",
+        "algorithms/baselines/mpe.py",
+        "environments/tag/environment.py",
+        "algorithms/baselines/tag/policy.py",
+    ),
+)
+register_environment(
+    "lbf",
+    LBFEnvironment.from_gym,
+    packages=("lbforaging",),
+    benchmark_sources=("environments/adapters/gym_tuple.py", "environments/lbf/environment.py"),
+)
+register_environment(
+    "rware",
+    RWAREEnvironment.from_gym,
+    packages=("rware",),
+    benchmark_sources=("environments/adapters/gym_tuple.py", "environments/rware/environment.py"),
+)
 register_environment(
     "two_arm_lift",
     TwoArmLift,
     action_kind="continuous",
     packages=("robosuite", "mujoco"),
     benchmark_sources=(
-        "environments/two_panda.py",
-        "environments/two_arm_lift.py",
-        "environments/lift_coordinates.py",
-        "algorithms/two_arm_lift_policy.py",
-        "evaluation/lift_timing.py",
+        "environments/robotics/base.py",
+        "environments/robotics/two_arm_lift/environment.py",
+        "environments/robotics/two_arm_lift/reference.py",
+        "environments/robotics/pose.py",
+        "algorithms/baselines/two_arm_lift/policy.py",
+        "evaluation/robotics/two_arm_lift/timing.py",
     ),
 )
 
@@ -82,10 +114,10 @@ register_environment(
     action_kind="continuous",
     packages=("robosuite", "mujoco"),
     benchmark_sources=(
-        "environments/two_panda.py",
-        "environments/two_arm_handover.py",
-        "environments/handover_reference.py",
-        "environments/lift_coordinates.py",
-        "algorithms/two_arm_handover_policy.py",
+        "environments/robotics/base.py",
+        "environments/robotics/two_arm_handover/environment.py",
+        "environments/robotics/two_arm_handover/reference.py",
+        "environments/robotics/pose.py",
+        "algorithms/baselines/two_arm_handover/policy.py",
     ),
 )

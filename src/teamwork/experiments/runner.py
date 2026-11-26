@@ -56,10 +56,12 @@ def write_provenance(out, device):
 
 def run_training(config, out):
     # 延迟导入，避免公共实验入口依赖某种算法的内部模块。
+    from ..algorithms.names import canonical_algorithm_name
     from ..algorithms.registry import make_algorithm
     from ..algorithms.training import validate_training_scope
     from ..environments.registry import environment_registration
 
+    config = {**config, "algorithm": canonical_algorithm_name(config["algorithm"])}
     algorithm = make_algorithm(config["algorithm"])
     environment = environment_registration(config["env"])
     if algorithm.action_kind != environment.action_kind:

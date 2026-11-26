@@ -1,8 +1,9 @@
 """训练阵营校验，以及 PPO/IQL 的阵营选择与固定对手动作。"""
 
 from .baselines import baseline_actions
+from .names import CENTRALIZED_PPO, canonical_algorithm_name
 
-FIXED_OPPONENT_ALGORITHMS = frozenset({"ippo", "iql", "mappo"})
+FIXED_OPPONENT_ALGORITHMS = frozenset({"ippo", "iql", CENTRALIZED_PPO})
 
 
 def validate_training_scope(config, *, require_fixed_opponent=False):
@@ -17,7 +18,7 @@ def validate_training_scope(config, *, require_fixed_opponent=False):
     if joint_training and not require_fixed_opponent:
         return
 
-    algorithm = config["algorithm"]
+    algorithm = canonical_algorithm_name(config["algorithm"])
     if algorithm not in FIXED_OPPONENT_ALGORITHMS:
         raise ValueError(
             f"{algorithm} does not support fixed-opponent Tag training. "

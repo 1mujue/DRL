@@ -216,7 +216,7 @@ def test_guided_lbf_training_saves_local_execution_checkpoint(tmp_path, monkeypa
     def unexpected_demo(env):
         raise AssertionError("Evaluation must use the learned local policy")
 
-    monkeypatch.setattr("teamwork.algorithms.qplex.lbf_teacher.demo_actions", unexpected_demo)
+    monkeypatch.setattr("teamwork.algorithms.qplex.lbf.teacher.demo_actions", unexpected_demo)
     result = evaluate("lbf", checkpoint=checkpoint, episodes=1, seed=10000)
     assert result["training_steps"] == 60
     assert result["algorithm_variant"]["lbf_demo_every"] == 1

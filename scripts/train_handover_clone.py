@@ -7,7 +7,8 @@ import numpy as np
 import yaml
 from train_stable_lift import train_clone
 
-from teamwork.algorithms.two_arm_handover_policy import ScriptedHandoverPolicy
+from teamwork.algorithms.baselines.two_arm_handover.policy import ScriptedHandoverPolicy
+from teamwork.algorithms.names import CENTRALIZED_PPO_CONTINUOUS, canonical_algorithm_name
 from teamwork.environments.registry import make_env
 from teamwork.evaluation.evaluator import save_result
 from teamwork.evaluation.metrics import make_metrics, resolved_env_kwargs
@@ -99,15 +100,15 @@ def train_handover_clone(config, out, *, start_seed, episodes, max_attempts):
     if start_seed < 0 or not 0 < episodes <= max_attempts:
         raise ValueError("Use a nonnegative seed and 0 < demonstration episodes <= max attempts")
     if (
-        config.get("algorithm") != "mappo_continuous"
+        canonical_algorithm_name(config.get("algorithm")) != CENTRALIZED_PPO_CONTINUOUS
         or config.get("env") != "two_arm_handover"
         or config.get("actor_type") != "handover_pose"
     ):
-        raise ValueError("Use a continuous MAPPO TwoArmHandover configuration with handover_pose")
+        raise ValueError("Use centralized_ppo_continuous with TwoArmHandover and handover_pose")
     settings = resolved_env_kwargs(config["env"], config.get("env_kwargs"))
     if not settings.get("pose_feedback"):
         raise ValueError("The scripted handover needs pose_feedback")
-    config = {**config, "env_kwargs": settings}
+    config = {**config, "algorithm": CENTRALIZED_PPO_CONTINUOUS, "env_kwargs": settings}
     out.mkdir(parents=True, exist_ok=False)
     demonstrations = record_successes(config, start_seed, episodes, max_attempts, out)
     return train_clone(config, out / "behavior_clone", demonstrations)

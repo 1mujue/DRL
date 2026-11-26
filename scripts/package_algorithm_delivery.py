@@ -49,8 +49,10 @@ def main():
     shutil.copy2(args.wheel, args.out / args.wheel.name)
     shutil.copytree(source, args.out / "acceptance")
     for name in (
-        "docs/API_INTEGRATION.md",
-        "docs/API_ACCEPTANCE.md",
+        "docs/api/README.md",
+        "docs/api/API_ACCEPTANCE.md",
+        "docs/guides/SETUP.md",
+        "docs/experiments/README.md",
         "requirements.lock.txt",
         "examples/algorithm_api.py",
         "scripts/verify_algorithm_api.py",
@@ -84,7 +86,7 @@ def main():
 
 源码提交：`{revision}`；Python 3.12；API 版本 1.0。
 
-安装 SDK（依赖需按部署平台安装，具体说明见 docs/API_INTEGRATION.md）：
+安装 SDK（依赖需按部署平台安装，具体说明见 [SDK 安装](docs/api/README.md)）：
 
 ```bash
 python -m pip install './{args.wheel.name}[extra-envs]' -c requirements.lock.txt
@@ -103,7 +105,7 @@ with AlgorithmAPI("acceptance/workspace") as api:
     print([(r["run_id"], r["config"]["algorithm"], r["config"]["env"]) for r in records])
 ```
 
-详细输入输出见 docs/API_INTEGRATION.md；测试与训练结果见 docs/API_ACCEPTANCE.md。
+详细输入输出见 [SDK 说明](docs/api/README.md)。测试与训练结果见 [接入验收](docs/api/API_ACCEPTANCE.md)。
 原始验收记录保留产出机器上的路径信息，迁移后以 delivery.json 和 SDK 查询的路径为准。
 SHA256SUMS.json 记录包内文件校验值。训练预算和任务效果以验收记录为准。
 """

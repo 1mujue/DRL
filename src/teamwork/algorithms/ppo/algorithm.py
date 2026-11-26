@@ -3,6 +3,7 @@
 import torch
 
 from ..base import Algorithm, Policy
+from ..names import canonical_algorithm_name
 from . import trainer
 
 
@@ -23,11 +24,11 @@ class PPOPolicy(Policy):
 
 class PPOAlgorithm(Algorithm):
     def __init__(self, name):
-        self.name = name
-        self.action_kind = "continuous" if name in trainer.CONTINUOUS else "discrete"
+        self.name = canonical_algorithm_name(name)
+        self.action_kind = "continuous" if self.name in trainer.CONTINUOUS else "discrete"
 
     def train(self, config, out):
-        if config["algorithm"] != self.name:
+        if canonical_algorithm_name(config["algorithm"]) != self.name:
             raise ValueError("Algorithm configuration does not match selected implementation")
         return trainer.train(config, out)
 

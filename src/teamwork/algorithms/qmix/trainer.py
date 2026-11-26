@@ -321,7 +321,7 @@ def collect_and_train(
     )
     demo_every = config.get("lbf_demo_every", 0) if config["algorithm"] == "qplex" else 0
     if demo_every:
-        from ..qplex.lbf_teacher import demo_actions
+        from ..qplex.lbf.teacher import demo_actions
 
     rng = np.random.default_rng(config["seed"])
     policy = QMIXPolicy(learner.controller, config["evaluation_epsilon"])

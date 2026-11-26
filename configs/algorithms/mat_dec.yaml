@@ -1,5 +1,5 @@
 # 项目内 MAT-Dec 适配：局部 MLP actor + 训练时的 Transformer critic。
-# 结构与官方 dec_actor=True 分支一致；细节差异见 docs/MAT_DEC.md。
+# 结构与官方 dec_actor=True 分支一致；细节差异见 docs/algorithms/MAT_DEC.md。
 env: spread
 algorithm: mat_dec
 seed: 0

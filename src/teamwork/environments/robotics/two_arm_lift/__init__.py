@@ -1,0 +1,1 @@
+"""Two-arm lifting task."""

@@ -1,4 +1,5 @@
-algorithm: mappo_continuous
+# 连续集中 critic PPO 基线。历史文件名保留以便复现实验。
+algorithm: centralized_ppo_continuous
 actor_type: lift_pose
 env: two_arm_lift
 env_kwargs:

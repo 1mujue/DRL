@@ -9,9 +9,10 @@ import numpy as np
 import torch
 import yaml
 
+from teamwork.algorithms.baselines.two_arm_lift.policy import ScriptedLiftPolicy
 from teamwork.algorithms.continuous_off_policy import VARIANTS, build_actors
+from teamwork.algorithms.names import canonical_algorithm_name
 from teamwork.algorithms.ppo.trainer import CONTINUOUS, create_agents
-from teamwork.algorithms.two_arm_lift_policy import ScriptedLiftPolicy
 from teamwork.environments.registry import make_env
 from teamwork.evaluation.metrics import make_metrics, resolved_env_kwargs
 from teamwork.experiments.runner import run_training, seed_all, write_provenance
@@ -53,6 +54,7 @@ def record_demonstrations(env, seeds, destination):
 
 
 def train_clone(config, out, demonstration_path):
+    config = {**config, "algorithm": canonical_algorithm_name(config["algorithm"])}
     seed_all(config["seed"])
     env = make_env(config["env"], **config["env_kwargs"])
     try:
@@ -123,7 +125,9 @@ def main():
     parser.add_argument("--demo-seed", type=int, default=31000)
     parser.add_argument("--demo-episodes", type=int, default=16)
     parser.add_argument("--online-steps", "--ppo-steps", dest="online_steps", type=int)
-    parser.add_argument("--algorithm", choices=sorted(CONTINUOUS | VARIANTS.keys()))
+    parser.add_argument(
+        "--algorithm", type=canonical_algorithm_name, choices=sorted(CONTINUOUS | VARIANTS.keys())
+    )
     parser.add_argument("--seed", type=int)
     args = parser.parse_args()
     if (
@@ -134,8 +138,7 @@ def main():
     ):
         parser.error("demo episodes must be positive and seeds and online steps nonnegative")
     config = yaml.safe_load(args.config.read_text(encoding="utf-8"))
-    if args.algorithm:
-        config["algorithm"] = args.algorithm
+    config["algorithm"] = args.algorithm or canonical_algorithm_name(config["algorithm"])
     if args.seed is not None:
         config["seed"] = args.seed
     if config["algorithm"] not in CONTINUOUS | VARIANTS.keys():
