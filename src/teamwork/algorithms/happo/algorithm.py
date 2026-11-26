@@ -22,9 +22,7 @@ class HAPPOPolicy(Policy):
             logits = self.model.local_logits(observations)
             return {
                 agent: int(
-                    scores.argmax()
-                    if deterministic
-                    else Categorical(logits=scores).sample()
+                    scores.argmax() if deterministic else Categorical(logits=scores).sample()
                 )
                 for agent, scores in logits.items()
             }

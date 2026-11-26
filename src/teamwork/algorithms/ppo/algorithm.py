@@ -3,6 +3,7 @@
 import torch
 
 from ..base import Algorithm, Policy
+from ..names import canonical_algorithm_name
 from . import trainer
 
 
@@ -13,23 +14,21 @@ class PPOPolicy(Policy):
     def act(self, observations, deterministic=True):
         with torch.no_grad():
             actions = {}
-            for agent in self.models:
-                observation = observations[agent]
-                logits = self.models[agent].actor(torch.as_tensor(observation, dtype=torch.float32))
-                actions[agent] = (
-                    int(logits.argmax())
-                    if deterministic
-                    else int(torch.distributions.Categorical(logits=logits).sample())
-                )
+            for agent, model in self.models.items():
+                observation = torch.as_tensor(observations[agent], dtype=torch.float32)
+                distribution = model.distribution(observation)
+                action = distribution.mode if deterministic else distribution.sample()
+                actions[agent] = model.environment_action(distribution, action)
             return actions
 
 
 class PPOAlgorithm(Algorithm):
     def __init__(self, name):
-        self.name = name
+        self.name = canonical_algorithm_name(name)
+        self.action_kind = "continuous" if self.name in trainer.CONTINUOUS else "discrete"
 
     def train(self, config, out):
-        if config["algorithm"] != self.name:
+        if canonical_algorithm_name(config["algorithm"]) != self.name:
             raise ValueError("Algorithm configuration does not match selected implementation")
         return trainer.train(config, out)
 

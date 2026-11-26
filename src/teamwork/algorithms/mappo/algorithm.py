@@ -40,8 +40,10 @@ class MAPPOAlgorithm(Algorithm):
             raise ValueError("Unsupported MAPPO checkpoint format")
         saved_spec = data["spec"]
         spec = EnvironmentSpec(
-            tuple(saved_spec["agents"]), tuple(saved_spec["observation_sizes"]),
-            tuple(saved_spec["action_counts"]), saved_spec["state_size"],
+            tuple(saved_spec["agents"]),
+            tuple(saved_spec["observation_sizes"]),
+            tuple(saved_spec["action_counts"]),
+            saved_spec["state_size"],
         )
         if data["config"].get("algorithm", "mappo_ff") != "mappo_ff":
             raise ValueError("Unsupported MAPPO checkpoint algorithm")

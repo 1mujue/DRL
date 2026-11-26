@@ -1,0 +1,8 @@
+training_config: ../algorithms/robotics/mappo_handover_clone.yaml
+demonstrations:
+  start_seed: 67100
+  episodes: 12
+  max_attempts: 48
+evaluation:
+  seed: 68000
+  episodes: 20

@@ -20,6 +20,7 @@ from ...environments.base import state
 from ...environments.registry import make_env
 from ...evaluation.metrics import resolved_env_kwargs
 from ..qmix.replay import EpisodeReplay
+from ..training import validate_training_scope
 from .learner import HASACLearner
 from .networks import (
     pack_observations,
@@ -213,6 +214,7 @@ def save_checkpoint(path, learner, config, spec, steps, actor_order):
 
 def train(config, out):
     config = resolve_config(config)
+    validate_training_scope(config)
     out = Path(out)
     if out.exists():
         raise FileExistsError(f"Run directory already exists: {out}")
@@ -265,17 +267,13 @@ def collect_and_train(env, observations, learner, spec, config, out, device):
         (out / "episodes.csv").open("w", encoding="utf-8", newline="") as episode_file,
         (out / "updates.csv").open("w", encoding="utf-8", newline="") as update_file,
     ):
-        episode_writer = csv.DictWriter(
-            episode_file, fieldnames=["episode", "steps", *spec.agents]
-        )
+        episode_writer = csv.DictWriter(episode_file, fieldnames=["episode", "steps", *spec.agents])
         update_writer = csv.DictWriter(update_file, fieldnames=fields)
         episode_writer.writeheader()
         update_writer.writeheader()
         while steps < config["total_steps"]:
             trajectory = {
-                "observations": [
-                    pack_observations(observations, spec, device).cpu().numpy()
-                ],
+                "observations": [pack_observations(observations, spec, device).cpu().numpy()],
                 "states": [environment_state(env, spec)],
                 "actions": [],
                 "rewards": [],
@@ -320,9 +318,7 @@ def collect_and_train(env, observations, learner, spec, config, out, device):
                         episodes += 1
                         episode_writer.writerow({"episode": episodes, "steps": steps, **returns})
                         episode_file.flush()
-                    if len(replay) >= max(
-                        config["batch_size"], config["learning_starts_episodes"]
-                    ):
+                    if len(replay) >= max(config["batch_size"], config["learning_starts_episodes"]):
                         for _ in range(config["updates_per_episode"]):
                             metrics = learner.train_batch(
                                 replay.sample(config["batch_size"], device)
@@ -346,9 +342,9 @@ def collect_and_train(env, observations, learner, spec, config, out, device):
                             steps,
                             learner.order,
                         )
-                        next_checkpoint = (
-                            steps // config["checkpoint_interval"] + 1
-                        ) * config["checkpoint_interval"]
+                        next_checkpoint = (steps // config["checkpoint_interval"] + 1) * config[
+                            "checkpoint_interval"
+                        ]
                     print(
                         f"steps={steps} episodes={episodes} updates={learner.updates} "
                         f"replay={len(replay)}",

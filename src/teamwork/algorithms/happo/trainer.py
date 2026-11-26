@@ -26,6 +26,7 @@ from ...environments.base import state
 from ...environments.registry import make_env
 from ...evaluation.metrics import resolved_env_kwargs
 from ..mappo.trainer import compute_gae, value_loss
+from ..training import validate_training_scope
 from .networks import (
     HAPPOModel,
     ValueNormalizer,
@@ -94,7 +95,11 @@ def resolve_config(config):
         value = result[key]
         if isinstance(value, bool) or not isinstance(value, int) or value < 1:
             raise ValueError(f"{key} must be a positive integer")
-    if isinstance(result["seed"], bool) or not isinstance(result["seed"], int) or result["seed"] < 0:
+    if (
+        isinstance(result["seed"], bool)
+        or not isinstance(result["seed"], int)
+        or result["seed"] < 0
+    ):
         raise ValueError("seed must be a nonnegative integer")
     interval = result["checkpoint_interval"]
     if isinstance(interval, bool) or not isinstance(interval, int) or interval < 0:
@@ -328,9 +333,7 @@ def _update(model, normalizer, actor_optimizers, critic_optimizer, batch, order,
                 raise FloatingPointError("Nonfinite HAPPO critic loss")
             critic_optimizer.zero_grad()
             (config["value_loss_coef"] * loss).backward()
-            grad_norm = nn.utils.clip_grad_norm_(
-                model.critic.parameters(), config["max_grad_norm"]
-            )
+            grad_norm = nn.utils.clip_grad_norm_(model.critic.parameters(), config["max_grad_norm"])
             if not torch.isfinite(grad_norm):
                 raise FloatingPointError("Nonfinite HAPPO critic gradient")
             critic_optimizer.step()
@@ -364,6 +367,7 @@ def _checkpoint(path, model, normalizer, config, steps, actor_order):
 
 def train(config, out):
     config = resolve_config(config)
+    validate_training_scope(config)
     out = Path(out)
     if out.exists():
         raise FileExistsError(f"Run directory already exists: {out}")
@@ -391,9 +395,7 @@ def train(config, out):
         (out / "training_contract.json").write_text(
             json.dumps(training_contract(config, actor_order), indent=2), encoding="utf-8"
         )
-        return _train_environment(
-            env, observations, model, spec, config, out, device, actor_order
-        )
+        return _train_environment(env, observations, model, spec, config, out, device, actor_order)
     finally:
         env.close()
 
@@ -470,10 +472,7 @@ def _train_environment(env, observations, model, spec, config, out, device, acto
                     distributions = {name: Categorical(logits=logits[name]) for name in names}
                     actions = torch.stack([distributions[name].sample() for name in names])
                     log_probs = torch.stack(
-                        [
-                            distributions[name].log_prob(actions[i])
-                            for i, name in enumerate(names)
-                        ]
+                        [distributions[name].log_prob(actions[i]) for i, name in enumerate(names)]
                     )
                     normalized_values = model.values(global_state)
                     values = (
@@ -488,7 +487,9 @@ def _train_environment(env, observations, model, spec, config, out, device, acto
                     raise ValueError("HAPPO requires fixed-population termination dictionaries")
                 ends = [terminated[name] or truncated[name] for name in names]
                 if any(ends) != all(ends):
-                    raise ValueError("HAPPO currently requires synchronous fixed-population episodes")
+                    raise ValueError(
+                        "HAPPO currently requires synchronous fixed-population episodes"
+                    )
                 ended = all(ends)
                 if not ended and (set(next_obs) != set(names) or set(env.agents) != set(names)):
                     raise ValueError("Agent population changed during a HAPPO rollout")
@@ -511,9 +512,7 @@ def _train_environment(env, observations, model, spec, config, out, device, acto
                     "old_normalized_values": normalized_values,
                     "values": values,
                     "next_values": next_values,
-                    "rewards": torch.tensor(
-                        training_rewards, dtype=torch.float32, device=device
-                    ),
+                    "rewards": torch.tensor(training_rewards, dtype=torch.float32, device=device),
                     "terminated": torch.tensor(
                         [float(terminated[name]) for name in names],
                         dtype=torch.float32,
@@ -563,9 +562,9 @@ def _train_environment(env, observations, model, spec, config, out, device, acto
                     steps,
                     actor_order,
                 )
-                next_checkpoint = (
-                    steps // config["checkpoint_interval"] + 1
-                ) * config["checkpoint_interval"]
+                next_checkpoint = (steps // config["checkpoint_interval"] + 1) * config[
+                    "checkpoint_interval"
+                ]
             print(
                 f"steps={steps} episodes={episodes} "
                 f"policy_loss={diagnostics['policy_loss']:.5f} "

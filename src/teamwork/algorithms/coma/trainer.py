@@ -13,15 +13,20 @@ from torch.distributions import Categorical
 from ...environments.registry import make_env
 from ...evaluation.metrics import resolved_env_kwargs
 from ...experiments.runner import seed_all
+from ..training import validate_training_scope
 
 # ----------------------------- 网络 -----------------------------
 
+
 def mlp(n_in, n_out, hidden):
     return nn.Sequential(
-        nn.Linear(n_in, hidden), nn.Tanh(),
-        nn.Linear(hidden, hidden), nn.Tanh(),
+        nn.Linear(n_in, hidden),
+        nn.Tanh(),
+        nn.Linear(hidden, hidden),
+        nn.Tanh(),
         nn.Linear(hidden, n_out),
     )
+
 
 def _to_python(obj):
     """递归把 numpy 标量转成 Python 原生类型，让 weights_only=True 能加载。"""
@@ -32,6 +37,7 @@ def _to_python(obj):
     if isinstance(obj, np.generic):
         return obj.item()
     return obj
+
 
 class COMAActor(nn.Module):
     """暴露 .actor 属性，方便 COMAPolicy 写成与 PPOPolicy 同构的形式。"""
@@ -57,12 +63,11 @@ class COMACritic(nn.Module):
 
 
 def _joint_actions_onehot(acts_dict, names, n_actions):
-    return torch.cat(
-        [F.one_hot(acts_dict[a].long(), n_actions).float() for a in names], dim=-1
-    )
+    return torch.cat([F.one_hot(acts_dict[a].long(), n_actions).float() for a in names], dim=-1)
 
 
 # ----------------------------- 更新 -----------------------------
+
 
 def coma_update(actors, critic, target_critic, opt_actor, opt_critic, batch, cfg):
     names = cfg["_names"]
@@ -70,11 +75,11 @@ def coma_update(actors, critic, target_critic, opt_actor, opt_critic, batch, cfg
     gamma = cfg["gamma"]
     tau = cfg["tau"]
 
-    obs = batch["obs"]            # dict[a -> (H, obs_dim)]
-    acts = batch["act"]           # dict[a -> (H,)] int64
-    rews = batch["rew"]           # (H,) 团队奖励
+    obs = batch["obs"]  # dict[a -> (H, obs_dim)]
+    acts = batch["act"]  # dict[a -> (H,)] int64
+    rews = batch["rew"]  # (H,) 团队奖励
     next_obs = batch["next_obs"]
-    term = batch["term"]          # (H,) 真正终止
+    term = batch["term"]  # (H,) 真正终止
 
     all_obs = torch.cat([obs[a] for a in names], dim=-1)
     all_next_obs = torch.cat([next_obs[a] for a in names], dim=-1)
@@ -109,26 +114,22 @@ def coma_update(actors, critic, target_critic, opt_actor, opt_critic, batch, cfg
                 cf_acts[a] = torch.full_like(acts[a], u)
                 cf_oh = _joint_actions_onehot(cf_acts, names, n_actions)
                 cf_qs.append(critic(all_obs, cf_oh))
-            cf_qs = torch.stack(cf_qs, dim=-1)                 # (H, n_actions)
-            pi_a = F.softmax(actors[a](obs[a]), dim=-1)        # (H, n_actions)
-            baselines[a] = (pi_a * cf_qs).sum(-1)              # (H,)
+            cf_qs = torch.stack(cf_qs, dim=-1)  # (H, n_actions)
+            pi_a = F.softmax(actors[a](obs[a]), dim=-1)  # (H, n_actions)
+            baselines[a] = (pi_a * cf_qs).sum(-1)  # (H,)
 
     # ---- 3) Actor 更新（REINFORCE 形式的反事实优势）----
     actor_loss = 0.0
     for a in names:
         logits = actors[a](obs[a])
-        log_pi = F.log_softmax(logits, dim=-1).gather(
-            -1, acts[a].long().unsqueeze(-1)
-        ).squeeze(-1)
+        log_pi = F.log_softmax(logits, dim=-1).gather(-1, acts[a].long().unsqueeze(-1)).squeeze(-1)
         adv = (q_current - baselines[a]).detach()
         if adv.numel() > 1:
             adv = (adv - adv.mean()) / (adv.std(unbiased=False) + 1e-8)
         actor_loss = actor_loss - (log_pi * adv).mean()
     opt_actor.zero_grad()
     actor_loss.backward()
-    nn.utils.clip_grad_norm_(
-        [p for a in names for p in actors[a].parameters()], 10.0
-    )
+    nn.utils.clip_grad_norm_([p for a in names for p in actors[a].parameters()], 10.0)
     opt_actor.step()
 
     # ---- 4) 软更新目标 Critic ----
@@ -145,7 +146,9 @@ def coma_update(actors, critic, target_critic, opt_actor, opt_critic, batch, cfg
 
 # ----------------------------- 主循环 -----------------------------
 
+
 def train(config, out):
+    validate_training_scope(config)
     config = {**config, "env_kwargs": resolved_env_kwargs(config["env"], config.get("env_kwargs"))}
     out = Path(out)
     out.mkdir(parents=True, exist_ok=False)
@@ -165,8 +168,7 @@ def train(config, out):
     n_actions = n_acts[names[0]]
 
     actors = {
-        a: COMAActor(obs_dim, n_actions, config.get("actor_hidden", 64)).to(device)
-        for a in names
+        a: COMAActor(obs_dim, n_actions, config.get("actor_hidden", 64)).to(device) for a in names
     }
     critic_hidden = config.get("critic_hidden", 128)
     critic = COMACritic(len(names), obs_dim, n_actions, critic_hidden).to(device)
@@ -245,7 +247,9 @@ def train(config, out):
                 "rew": torch.tensor(buf["rew"], dtype=torch.float32, device=device),
                 "next_obs": {
                     a: torch.as_tensor(
-                        np.stack([b[a] for b in buf["next_obs"]]), dtype=torch.float32, device=device
+                        np.stack([b[a] for b in buf["next_obs"]]),
+                        dtype=torch.float32,
+                        device=device,
                     )
                     for a in names
                 },

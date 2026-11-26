@@ -22,9 +22,7 @@ class VDNPolicy(Policy):
                 raise ValueError(f"Unknown VDN agent: {agent}")
             parameter = next(self.networks[agent].parameters())
             try:
-                local = torch.as_tensor(
-                    observation, dtype=parameter.dtype, device=parameter.device
-                )
+                local = torch.as_tensor(observation, dtype=parameter.dtype, device=parameter.device)
             except (TypeError, ValueError, RuntimeError) as error:
                 raise ValueError(f"Invalid VDN observation for {agent}") from error
             if local.shape != (parameter.shape[1],) or not torch.isfinite(local).all():

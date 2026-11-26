@@ -10,11 +10,14 @@ import imageio.v2 as imageio
 import numpy as np
 import torch
 
-from ..algorithms.baselines import baseline_actions
+from ..algorithms.baselines import SCRIPTED_HANDOVER_POLICY, baseline_actions, make_baseline_policy
+from ..algorithms.names import CENTRALIZED_PPO, canonical_algorithm_name
 from ..algorithms.registry import make_algorithm
-from ..environments.registry import make_env
+from ..algorithms.training import validate_training_scope
+from ..environments.registry import environment_registration, make_env
 from ..experiments.runner import seed_all
 from .metrics import make_metrics, protocol_description, resolved_env_kwargs, summarize
+from .robotics.two_arm_lift.timing import GRASP_CONFIRMATION_STEPS, LiftTimingTrial
 
 
 def save_result(result, path):
@@ -25,19 +28,109 @@ def save_result(result, path):
     )
 
 
-def _code_hash():
+def _code_hash(extra_sources=()):
     # 同一版本号下源码意外改变，也不得悄悄与旧口径结果合并。
     root = Path(__file__).resolve().parents[1]
     files = (
-        "evaluation/metrics.py",
         "evaluation/evaluator.py",
-        "environments/mpe.py",
-        "environments/gym_tuple.py",
+        "evaluation/metrics/base.py",
+        "evaluation/metrics/registry.py",
+        "environments/base.py",
         "environments/registry.py",
-        "algorithms/baselines.py",
+        "algorithms/baselines/__init__.py",
+        *extra_sources,
     )
-    content = b"".join((root / file).read_bytes() for file in files)
+    sources = [root / file for file in files]
+    sources.extend(sorted((root / "evaluation/metrics").glob("*/rules.py")))
+    content = b"".join(path.read_bytes() for path in sources)
     return hashlib.sha256(content).hexdigest()
+
+
+def _training_initialization(data):
+    if data is None:
+        return None
+    config = data["config"]
+    cloning = config.get("behavior_cloning")
+    if cloning is not None:
+        if not isinstance(cloning, dict):
+            raise ValueError("Invalid demonstration provenance")
+        digest = cloning.get("demonstration_sha256")
+        steps = cloning.get("demonstration_joint_steps")
+        if (
+            not isinstance(digest, str)
+            or len(digest) != 64
+            or any(char not in "0123456789abcdef" for char in digest)
+            or type(steps) is not int
+            or steps < 1
+        ):
+            raise ValueError("Checkpoint is missing valid demonstration provenance")
+        if cloning.get("method") != "behavior_cloning":
+            raise ValueError("Unknown demonstration initialization method")
+        method = "behavior_cloning_then_online" if data.get("steps", 0) else "behavior_cloning"
+        return {
+            "method": method,
+            "demonstration_sha256": digest,
+            "demonstration_joint_steps": steps,
+        }
+    if config.get("warm_start_checkpoint") or config.get("warm_start_sha256"):
+        return {
+            "method": "checkpoint_warm_start",
+            "checkpoint_sha256": config.get("warm_start_sha256"),
+        }
+    return {"method": "from_scratch"}
+
+
+def _training_conditions(config, env_kwargs):
+    """从已保存配置还原训练奖励模式，包括旧版 checkpoint 的默认值。"""
+    algorithm = canonical_algorithm_name(config["algorithm"])
+    reward_divisor = 1.0
+    if algorithm in {"ippo", "iql", CENTRALIZED_PPO}:
+        reward = "individual"
+    elif algorithm in {"coma", "maac"}:
+        reward = "first_agent"
+        reward_divisor = config.get("reward_scale", 10.0)
+    elif algorithm in {"vdn", "mat_dec"}:
+        reward = config.get("team_reward", "mean")
+    elif algorithm == "mappo_ff":
+        reward = config.get("reward_aggregation", "individual")
+    elif algorithm in {"qmix", "qtran", "qplex", "happo", "hasac_discrete"}:
+        reward = config.get("reward_aggregation", "mean")
+    else:
+        reward = None
+    if reward is None:
+        return None
+
+    # Spread 在 local_ratio=0 时给所有 agent 同一个全局奖励。
+    # 取单人、均值或原样共享会得到相同标量，奖励除数仍需单独对比。
+    shared_spread = config["env"] == "spread" and env_kwargs.get("local_ratio") == 0
+    effective_reward = (
+        "shared"
+        if shared_spread and reward in {"individual", "mean", "first_agent", "shared"}
+        else reward
+    )
+    return {
+        "reward_aggregation": effective_reward,
+        "configured_reward_aggregation": reward,
+        "reward_divisor": reward_divisor,
+        "mask_unavailable_actions": algorithm in {"qmix", "qtran", "qplex"}
+        and config.get("mask_unavailable_actions", False),
+    }
+
+
+def _algorithm_variant(config):
+    algorithm = config["algorithm"]
+    if algorithm not in {"qmix", "qtran", "qplex"}:
+        return None
+    variant = {
+        "replay_capacity": config.get("replay_capacity", 256),
+        "positive_replay_capacity": config.get("positive_replay_capacity", 0),
+        "positive_replay_samples": config.get("positive_replay_samples", 0),
+    }
+    if algorithm == "qplex":
+        variant["gradient_mode"] = config.get("gradient_mode", "dueling")
+        variant["lbf_demo_every"] = config.get("lbf_demo_every", 0)
+        variant["successful_action_loss_weight"] = config.get("successful_action_loss_weight", 0.0)
+    return variant
 
 
 def evaluate(
@@ -51,6 +144,12 @@ def evaluate(
     opponent=None,
     team="all",
     deterministic=True,
+    *,
+    pot_mass_scale=None,
+    record_trace=False,
+    lift_timing=None,
+    gripper_delay_steps=0,
+    delayed_arm="arm_1",
 ):
     if episodes < 1:
         raise ValueError("episodes must be positive")
@@ -63,6 +162,7 @@ def evaluate(
         data = torch.load(checkpoint, map_location="cpu", weights_only=True)
         if data["config"]["env"] != name:
             raise ValueError("Checkpoint environment mismatch")
+        validate_training_scope(data["config"])
         trained_team = data["config"].get("train_team", "all")
         if trained_team != "all" and (
             team != trained_team or opponent != data["config"].get("train_opponent")
@@ -72,26 +172,42 @@ def evaluate(
         if env_kwargs is not None and resolved_env_kwargs(name, env_kwargs) != trained:
             raise ValueError("Evaluation settings do not match checkpoint environment")
         env_kwargs = trained
+    if type(gripper_delay_steps) is not int or gripper_delay_steps < 0:
+        raise ValueError("gripper_delay_steps must be a nonnegative integer")
+    if lift_timing is not None and (
+        name != "two_arm_lift"
+        or not data
+        or data["config"].get("actor_type") != "lift_pose"
+        or not env_kwargs.get("pose_feedback")
+    ):
+        raise ValueError("Lift timing requires a TwoArmLift lift_pose checkpoint")
+    if gripper_delay_steps and lift_timing is None:
+        raise ValueError("Select a lift timing mode to apply the gripper delay")
+    initialization = _training_initialization(data)
     settings = resolved_env_kwargs(name, env_kwargs)
+    if pot_mass_scale is not None:
+        if name != "two_arm_lift":
+            raise ValueError("Pot mass evaluation is only supported for two_arm_lift")
+        settings.pop("pot_mass_range", None)
+        settings["pot_mass_scale"] = pot_mass_scale
+    if record_trace and name not in {"two_arm_lift", "two_arm_handover"}:
+        raise ValueError("Task traces are currently supported for the two robotic environments")
+    if not data and policy == SCRIPTED_HANDOVER_POLICY and not settings.get("pose_feedback"):
+        raise ValueError("scripted_handover requires pose_feedback in the environment config")
     seed_all(seed)
+    baseline = None if data else make_baseline_policy(name, policy)
     env = make_env(name, render_mode="rgb_array" if gif else None, **settings)
     rows, frames = [], []
-    execution_policy = None
+    execution_policy = baseline
     benchmark = None
+    timing_trial = None
     try:
         for ep in range(episodes):
             obs, _ = env.reset(seed=seed + ep)
             if ep == 0:
                 packages = {}
-                environment_package = {
-                    "spread": "mpe2",
-                    "tag": "mpe2",
-                    "lbf": "lbforaging",
-                    "rware": "rware",
-                }.get(name)
-                for package in ("pettingzoo", "gymnasium", "numpy", environment_package):
-                    if package is None:
-                        continue
+                registration = environment_registration(name)
+                for package in ("pettingzoo", "gymnasium", "numpy", *registration.packages):
                     try:
                         packages[package] = importlib.metadata.version(package)
                     except importlib.metadata.PackageNotFoundError:
@@ -105,26 +221,38 @@ def evaluate(
                     "deterministic": deterministic,
                     "opponent": opponent,
                     "team": team,
-                    "protocol_code_sha256": _code_hash(),
+                    "protocol_code_sha256": _code_hash(registration.benchmark_sources),
                 }
                 if data:
                     execution_policy = make_algorithm(data["config"]["algorithm"]).load_policy(
                         checkpoint, env, obs
                     )
+                if lift_timing is not None:
+                    timing_trial = LiftTimingTrial(
+                        execution_policy, lift_timing, env.horizon, delayed_arm, gripper_delay_steps
+                    )
+                    benchmark["gripper_delay"] = {"arm": delayed_arm, "steps": gripper_delay_steps}
             for i, agent in enumerate(env.agents):
                 env.action_space(agent).seed(seed + ep * 100 + i)
-            if execution_policy:
+            if timing_trial:
+                timing_trial.reset()
+            elif execution_policy:
                 execution_policy.reset()
             suite = make_metrics(name)
-            suite.reset(env.task_snapshot())
+            initial = env.task_snapshot()
+            suite.reset(initial)
+            trace = [initial] if record_trace else None
             totals = dict.fromkeys(env.possible_agents, 0.0)
             steps = 0
             while env.agents:
-                actions = (
-                    execution_policy.act(obs, deterministic=deterministic)
-                    if execution_policy
-                    else baseline_actions(env, obs, policy)
-                )
+                if timing_trial:
+                    actions = timing_trial.act(
+                        obs, env.local_grasp_contacts(), deterministic=deterministic
+                    )
+                elif execution_policy:
+                    actions = execution_policy.act(obs, deterministic=deterministic)
+                else:
+                    actions = baseline_actions(env, obs, policy)
                 if opponent:
                     other = baseline_actions(env, obs, opponent)
                     actions = {
@@ -139,16 +267,27 @@ def evaluate(
                 steps += 1
                 for agent, reward in rewards.items():
                     totals[agent] += float(reward)
-                suite.observe(env.task_snapshot())
+                snapshot = env.task_snapshot()
+                suite.observe(snapshot)
+                if trace is not None:
+                    if timing_trial:
+                        snapshot = {**snapshot, "control": timing_trial.diagnostic}
+                    trace.append(snapshot)
+            if gif and ep == 0:
+                frames.append(env.render())
             metrics = suite.finish(totals, env.possible_agents)
             expected = {d["name"] for d in benchmark["protocol"]["metrics"]}
             if set(metrics) != expected:
                 raise ValueError("Metric suite output does not match its registered definitions")
-            rows.append({"seed": seed + ep, "steps": steps, "returns": totals, "metrics": metrics})
+            row = {"seed": seed + ep, "steps": steps, "returns": totals, "metrics": metrics}
+            if trace is not None:
+                row["trace"] = {"control_hz": env.metadata["render_fps"], "samples": trace}
+            rows.append(row)
         if gif:
             gif = Path(gif)
             gif.parent.mkdir(parents=True, exist_ok=True)
-            imageio.mimsave(gif, frames, duration=100, loop=0)
+            fps = env.metadata.get("render_fps", 10)
+            imageio.mimsave(gif, frames, duration=round(1000 / fps), loop=0)
     finally:
         env.close()
     benchmark_id = hashlib.sha256(
@@ -157,13 +296,25 @@ def evaluate(
     return {
         "schema_version": 2,
         "env": name,
-        "algorithm": data["config"]["algorithm"] if data else policy,
+        "algorithm": canonical_algorithm_name(data["config"]["algorithm"]) if data else policy,
+        "algorithm_variant": _algorithm_variant(data["config"]) if data else None,
         "training_seed": data["config"]["seed"] if data else None,
         "training_steps": data.get("steps") if data else None,
         "training_setup": {
             "team": data["config"].get("train_team", "all"),
             "opponent": data["config"].get("train_opponent"),
-        } if data else None,
+        }
+        if data
+        else None,
+        "training_initialization": initialization,
+        **(
+            {"lift_timing": {"mode": lift_timing, "confirmation_steps": GRASP_CONFIRMATION_STEPS}}
+            if timing_trial
+            else {}
+        ),
+        "training_env_kwargs": trained if data else None,
+        "warm_start_sha256": data["config"].get("warm_start_sha256") if data else None,
+        "training_conditions": _training_conditions(data["config"], trained) if data else None,
         "model_sha256": hashlib.sha256(Path(checkpoint).read_bytes()).hexdigest() if data else None,
         "checkpoint": str(checkpoint) if checkpoint else None,
         "benchmark_id": benchmark_id,

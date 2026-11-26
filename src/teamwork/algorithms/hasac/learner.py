@@ -24,9 +24,7 @@ class HASACLearner:
         )
         self.model = HASACModel(spec, config).to(device)
         self.actor_optimizers = {
-            agent: torch.optim.Adam(
-                self.model.actors[agent].parameters(), lr=config["actor_lr"]
-            )
+            agent: torch.optim.Adam(self.model.actors[agent].parameters(), lr=config["actor_lr"])
             for agent in spec.agents
         }
         self.critic_optimizer = torch.optim.Adam(
@@ -48,14 +46,10 @@ class HASACLearner:
 
     # ------------------------------------------------------------------ helpers
     def alphas(self):
-        return torch.stack(
-            [self.model.log_alphas[agent].exp() for agent in self.spec.agents]
-        )
+        return torch.stack([self.model.log_alphas[agent].exp() for agent in self.spec.agents])
 
     def _observation(self, observations, index):
-        return agent_observation(
-            observations, index, self.spec.observation_sizes[index]
-        )
+        return agent_observation(observations, index, self.spec.observation_sizes[index])
 
     @torch.no_grad()
     def _sample_joint(self, observations, targets):
@@ -109,9 +103,9 @@ class HASACLearner:
         # ---- critic：软 TD 目标，熵项按 agent 求和 ----
         with torch.no_grad():
             next_actions, next_log_probs = self._sample_joint(data["next_observations"], True)
-            joint_target = self.model.q_values(next_states, next_actions, targets=True).min(
-                dim=-1
-            ).values
+            joint_target = (
+                self.model.q_values(next_states, next_actions, targets=True).min(dim=-1).values
+            )
             soft = joint_target - (self.alphas() * next_log_probs).sum(dim=-1)
             target = rewards + config["gamma"] * (1.0 - data["terminated"]) * soft
         joint_actions = self.model.q_values(states, actions)
@@ -120,9 +114,7 @@ class HASACLearner:
             raise FloatingPointError("Nonfinite HASAC critic loss")
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
-        critic_grad = clip_grad_norm_(
-            self.model.critics.parameters(), config["max_grad_norm"]
-        )
+        critic_grad = clip_grad_norm_(self.model.critics.parameters(), config["max_grad_norm"])
         if not torch.isfinite(critic_grad):
             raise FloatingPointError("Nonfinite HASAC critic gradient")
         self.critic_optimizer.step()
@@ -138,34 +130,32 @@ class HASACLearner:
                     previous, data["observations"], previous_column
                 )
             count = self.spec.action_counts[column]
-            logits = self.model.actor_logits(
-                agent, self._observation(data["observations"], column)
-            )
+            logits = self.model.actor_logits(agent, self._observation(data["observations"], column))
             log_pi = F.log_softmax(logits, dim=-1)
             probabilities = log_pi.exp()
             with torch.no_grad():
                 candidates = boundary.unsqueeze(1).repeat(1, count, 1)
-                candidates[:, :, column] = torch.arange(
-                    count, device=boundary.device
-                ).unsqueeze(0)
+                candidates[:, :, column] = torch.arange(count, device=boundary.device).unsqueeze(0)
                 expanded = states.unsqueeze(1).expand(-1, count, -1)
-                q_values = self.model.q_values(
-                    expanded.reshape(-1, states.shape[-1]),
-                    candidates.reshape(-1, len(names)),
-                ).min(dim=-1).values.reshape(len(states), count)
+                q_values = (
+                    self.model.q_values(
+                        expanded.reshape(-1, states.shape[-1]),
+                        candidates.reshape(-1, len(names)),
+                    )
+                    .min(dim=-1)
+                    .values.reshape(len(states), count)
+                )
             baseline = (probabilities.detach() * q_values).sum(dim=-1, keepdim=True)
             alpha = self.model.log_alphas[agent].exp().detach()
             actor_loss = (
-                probabilities * (alpha * log_pi - (q_values - baseline))
-            ).sum(dim=-1).mean()
+                (probabilities * (alpha * log_pi - (q_values - baseline))).sum(dim=-1).mean()
+            )
             if not torch.isfinite(actor_loss):
                 raise FloatingPointError("Nonfinite HASAC actor loss")
             optimizer = self.actor_optimizers[agent]
             optimizer.zero_grad()
             actor_loss.backward()
-            grad = clip_grad_norm_(
-                self.model.actors[agent].parameters(), config["max_grad_norm"]
-            )
+            grad = clip_grad_norm_(self.model.actors[agent].parameters(), config["max_grad_norm"])
             if not torch.isfinite(grad):
                 raise FloatingPointError("Nonfinite HASAC actor gradient")
             optimizer.step()
@@ -174,17 +164,14 @@ class HASACLearner:
             # ---- 温度：按当前策略的精确熵朝向目标熵 ----
             with torch.no_grad():
                 log_pi = F.log_softmax(
-                    self.model.actor_logits(
-                        agent, self._observation(data["observations"], column)
-                    ),
+                    self.model.actor_logits(agent, self._observation(data["observations"], column)),
                     dim=-1,
                 )
                 entropy = -(log_pi.exp() * log_pi).sum(dim=-1).mean()
             entropies.append(float(entropy))
             if agent in self.alpha_optimizers:
                 alpha_loss = (
-                    self.model.log_alphas[agent]
-                    * (entropy - self.target_entropy[agent])
+                    self.model.log_alphas[agent] * (entropy - self.target_entropy[agent])
                 ).mean()
                 alpha_optimizer = self.alpha_optimizers[agent]
                 alpha_optimizer.zero_grad()

@@ -3,6 +3,7 @@ import importlib.util
 import pytest
 import torch
 
+from teamwork.algorithms import available_algorithms, make_algorithm
 from teamwork.algorithms.ppo.trainer import create_agents, gae, load_policy, seed_all, train
 from teamwork.environments.registry import make_env
 from teamwork.evaluation.evaluator import evaluate
@@ -24,7 +25,7 @@ def test_time_limit_bootstrap_and_trace_cut():
 
 
 @pytest.mark.parametrize(
-    "algorithm,environment", [("ippo", "spread"), ("mappo", "spread"), ("ippo", "tag")]
+    "algorithm,environment", [("ippo", "spread"), ("centralized_ppo", "spread"), ("ippo", "tag")]
 )
 def test_train_save_load_evaluate(tmp_path, algorithm, environment):
     config = {
@@ -61,6 +62,43 @@ def test_train_save_load_evaluate(tmp_path, algorithm, environment):
         env.close()
     result = evaluate(environment, episodes=1, checkpoint=checkpoint, env_kwargs={"max_cycles": 5})
     assert result["episodes"][0]["steps"] == 5
+
+
+def test_legacy_centralized_ppo_name_preserves_fixed_opponent_checkpoints(tmp_path):
+    canonical = "centralized_ppo"
+    assert canonical in available_algorithms()
+    assert "mappo" not in available_algorithms()
+    assert make_algorithm("mappo").name == canonical
+    assert make_algorithm("mappo_ff").__class__ is not type(make_algorithm(canonical))
+
+    config = {
+        "algorithm": "mappo",
+        "env": "tag",
+        "env_kwargs": {"max_cycles": 5},
+        "seed": 0,
+        "total_steps": 8,
+        "epochs": 1,
+        "train_team": "predators",
+        "train_opponent": "rule",
+    }
+    checkpoint = run_training(config, tmp_path / "canonical")
+    data = torch.load(checkpoint, map_location="cpu", weights_only=True)
+    assert data["config"]["algorithm"] == canonical
+
+    data["config"]["algorithm"] = "mappo"
+    legacy = tmp_path / "legacy.pt"
+    torch.save(data, legacy)
+    options = {"episodes": 1, "team": "predators", "opponent": "rule"}
+    legacy_eval = evaluate("tag", checkpoint=legacy, **options)
+    current_eval = evaluate("tag", checkpoint=checkpoint, **options)
+    assert legacy_eval["algorithm"] == current_eval["algorithm"] == canonical
+    assert legacy_eval["summary"] == current_eval["summary"]
+
+    warmed = run_training(
+        {**config, "algorithm": canonical, "warm_start_checkpoint": str(legacy)},
+        tmp_path / "warm_start",
+    )
+    assert torch.load(warmed, map_location="cpu", weights_only=True)["config"]["warm_start_sha256"]
 
 
 @pytest.mark.parametrize("environment", ["lbf", "rware"])

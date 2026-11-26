@@ -31,15 +31,13 @@ def main():
         run("-m", "pytest", "-q")
     (ROOT / "runs").mkdir(exist_ok=True)
     out = Path(tempfile.mkdtemp(prefix="smoke-", dir=ROOT / "runs"))
-    for algorithm in ("ippo", "mappo", "iql"):
+    for algorithm in ("ippo", "centralized_ppo", "iql"):
         run(
             "-m",
             "teamwork.cli",
             "train",
             "--config",
-            f"configs/algorithms/{'iql' if algorithm == 'iql' else 'ppo'}.yaml",
-            "--algorithm",
-            algorithm,
+            f"configs/algorithms/{algorithm}.yaml",
             "--env",
             "spread",
             "--steps",
@@ -65,7 +63,7 @@ def main():
         "teamwork.cli",
         "compare",
         out / "ippo.json",
-        out / "mappo.json",
+        out / "centralized_ppo.json",
         out / "iql.json",
         "--metric",
         "final_coverage",

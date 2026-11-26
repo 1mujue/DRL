@@ -1,141 +1,63 @@
 # 多智能体强化学习算法对比
 
-研究：**同场景比较算法，同算法跨场景验证。** 每人认领至少2个DRL算法，共用环境和固定指标。
-目前已注册 IPPO、DQN-based IQL、集中 critic PPO 基线、前馈 MAPPO、QMIX、COMA、MAAC、QTRAN-base 和 QPLEX；调用名与场景配置见下表。候选方法的研究方向见 [算法清单与认领](docs/ALGORITHMS.md)，实际接入情况以本表和注册表为准。
+我们让多个智能体在仿真里学会分工或对抗。用同一套命令，可以在 Spread 中比较不同算法怎样分头覆盖目标，也可以让同一个算法换到 Tag 里追捕。项目还接入了合作采集、仓储和 MuJoCo 双臂任务。
 
-IPPO/IQL 的方法说明、四场景批量实验和 Tag 固定对手训练见 [IPPO 与 IQL](docs/IPPO_IQL.md)。
-供业务后端调用的训练任务、模型推理和结果查询 API 见 [算法接入交付](docs/API_INTEGRATION.md)。
+## 快速开始
 
-[QTRAN 和 QPLEX](docs/QTRAN_QPLEX.md)包含算法实现说明和逐步测试命令。
+先在终端进入仓库根目录（能看到 `pyproject.toml` 和 `configs/`）。下面用 CPU 训练一个 IPPO 模型，让三个智能体在 Spread 中覆盖三个目标。
 
-## 算法与场景配置
+### 1. 安装
 
-场景栏填写已有的配置入口；**空白表示尚未提供场景设计或配置，留给其他成员补充，不代表算法在理论上不适用。** 未接入的候选方法仅预留算法名，注册名、场景和调用栏保持空白，接入后再填写。
+WSL 或 Ubuntu 已装 Miniconda 时，运行：
 
-| 算法 | 注册名 | Spread：目标覆盖 | Tag：追捕对抗 | LBF：合作采集 | RWARE：机器人仓储 | Python 调用入口 |
-|---|---|---|---|---|---|---|
-| MAPPO（前馈） | `mappo_ff` | [3 agent](configs/algorithms/mappo/spread.yaml) | | [全场视野](configs/algorithms/mappo/lbf.yaml)、[局部视野](configs/algorithms/mappo/lbf_partial.yaml) | [2 agent](configs/algorithms/mappo/rware.yaml) | `make_algorithm("mappo_ff")` |
-| QMIX（局部 GRU） | `qmix` | [3 agent](configs/algorithms/qmix/spread.yaml) | | [全场视野](configs/algorithms/qmix/lbf.yaml)、[局部视野](configs/algorithms/qmix/lbf_partial.yaml) | [2 agent](configs/algorithms/qmix/rware.yaml) | `make_algorithm("qmix")` |
-| IPPO 基线 | `ippo` | [独立配置](configs/algorithms/ippo.yaml) | [固定队伍](docs/IPPO_IQL.md) | [场景覆盖](docs/IPPO_IQL.md) | [场景覆盖](docs/IPPO_IQL.md) | `make_algorithm("ippo")` |
-| 集中 critic PPO 基线 | `mappo` | [共用配置](configs/algorithms/ppo.yaml) | | | | `make_algorithm("mappo")` |
-| DQN-based IQL | `iql` | [独立配置](configs/algorithms/iql.yaml) | [固定队伍](docs/IPPO_IQL.md) | [场景覆盖](docs/IPPO_IQL.md) | [场景覆盖](docs/IPPO_IQL.md) | `make_algorithm("iql")` |
-| VDN | | | | | | |
-| COMA | `coma` | [默认配置](configs/algorithms/coma.yaml) | | | | `make_algorithm("coma")` |
-| MAAC | `maac` | [默认配置](configs/algorithms/maac.yaml) | | | | `make_algorithm("maac")` |
-| QTRAN | `qtran` | [默认配置](configs/algorithms/qtran.yaml) | | `--env lbf` | `--env rware` | `make_algorithm("qtran")` |
-| QPLEX | `qplex` | [默认配置](configs/algorithms/qplex.yaml) | | `--env lbf` | `--env rware` | `make_algorithm("qplex")` |
-| HAPPO（异构 actor，顺序更新） | `happo` | [3 agent](configs/algorithms/happo/spread.yaml) | | [全场视野](configs/algorithms/happo/lbf.yaml)、[局部视野](configs/algorithms/happo/lbf_partial.yaml) | [2 agent](configs/algorithms/happo/rware.yaml) | `make_algorithm("happo")` |
-| HASAC（离散，软优势分解） | `hasac_discrete` | [3 agent](configs/algorithms/hasac/spread.yaml) | | [全场视野](configs/algorithms/hasac/lbf.yaml)、[局部视野](configs/algorithms/hasac/lbf_partial.yaml) | [2 agent](configs/algorithms/hasac/rware.yaml) | `make_algorithm("hasac_discrete")` |
-| MAT / MAT-Dec | | | | | | |
-| SMPE² | | | | | | |
-
-`mappo` 是旧集中 critic PPO 基线，独立 MAPPO 使用 `mappo_ff`。运行旧基线 `mappo` 时，需把共用 `ppo.yaml` 读入配置的 `algorithm` 改为 `mappo`，或通过 CLI 指定 `--algorithm mappo`。
-HAPPO/HASAC（离散）的实现说明、奖励口径与验收命令见 [方法与实验说明](docs/HAPPO_HASAC.md)。
-
-MAPPO/QMIX 的成对场景配置固定相同环境条件、训练预算和 `reward_aggregation: mean`；训练日志和公共评估仍记录原始个体回报。局部视野 LBF 的 `sight=2`，全场视野为 `sight=8`。当前 MAPPO 没有循环记忆；上述配置已做短程流程验证，尚不表示已收敛。Tag 暂无这两个方法的固定队伍训练配置，场景栏留空。
-
-### Python API 调用
-
-以 MAPPO 的 Spread 配置为例；调用 QMIX 时，将配置路径换成 `configs/algorithms/qmix/spread.yaml`，其余代码相同。其他场景使用表中对应配置；以下代码从项目根目录运行。
-
-```python
-from pathlib import Path
-
-import yaml
-
-from teamwork.algorithms import make_algorithm
-from teamwork.environments.registry import make_env
-
-config_path = Path("configs/algorithms/mappo/spread.yaml")
-config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-algorithm = make_algorithm(config["algorithm"])
-out = Path("runs") / config["algorithm"] / "spread_s0"
-checkpoint = algorithm.train(config, out)
-
-env = make_env(config["env"], **config["env_kwargs"])
-try:
-    observations, _ = env.reset(seed=10000)
-    policy = algorithm.load_policy(checkpoint, env, observations)
-    policy.reset()  # 每回合清空循环策略的隐藏状态。
-    while env.agents:
-        actions = policy.act(observations, deterministic=True)
-        observations, rewards, terminated, truncated, infos = env.step(actions)
-finally:
-    env.close()
+```bash
+conda create -n deeprl-teamwork --override-channels -c conda-forge python=3.12 pip
+conda activate deeprl-teamwork
+python -m pip install "torch==2.7.1+cpu" --index-url https://download.pytorch.org/whl/cpu
+env -u PYTHONPATH python -m pip install -r requirements.txt
 ```
 
-`out` 必须是尚不存在的实验目录；改场景时同步更换输出目录名。排错可先减小 `config["total_steps"]`，预算单位为联合环境步。需要统一耗时报告 `training.json` 时，用 `teamwork.experiments.runner.run_training(config, out)` 替换上述 `algorithm.train(config, out)`。
+已有 `deeprl-teamwork` 时，激活后执行最后一行。原生 Windows 或没有 Conda 时，请按 [安装指南](docs/guides/SETUP.md#使用项目虚拟环境的安装方式) 操作。
 
-所有已注册方法均通过 `Algorithm.train`、`Algorithm.load_policy` 和 `Policy.act` 调用。MAPPO/QMIX 还支持 `algorithm.load_policy(checkpoint, device="cpu")`，无需创建仿真环境即可加载执行策略；原 PPO 基线加载仍需传入 `env` 和 `observations`。场景指标统计请使用下方公共 `evaluate` 入口。
-
-## 目录结构
-
-```text
-src/teamwork/
-├── algorithms/                 ← 主要工作区：各自的算法
-│   ├── base.py                 # Algorithm / Policy 公共合同
-│   ├── registry.py             # 新算法在这里注册
-│   ├── baselines.py            # 随机与规则对照
-│   └── ppo/                    # 现有 IPPO / 集中 critic PPO
-│       ├── algorithm.py        # 接口、策略动作与模型加载
-│       └── trainer.py          # 网络、采样、损失与参数更新
-├── environments/               ← 接入或修改仿真环境
-│   ├── base.py                 # Environment 合同与空间描述
-│   ├── registry.py             # 环境工厂注册
-│   ├── mpe.py                  # MPE2 Spread / Tag
-│   └── gym_tuple.py            # LBF / RWARE 共同适配
-├── evaluation/                 ← 全组共同维护，算法不自行计分
-│   ├── metrics.py              # 每个场景的固定指标和默认条件
-│   ├── evaluator.py            # 运行模型，输出逐回合指标
-│   ├── compare.py              # 可比性检查与跨训练种子汇总
-│   └── plots.py                # 训练曲线与算法对比图
-├── experiments/runner.py        ← 实验调度、种子、预算、耗时
-└── cli.py                      ← 命令行参数，不放算法实现
-
-configs/algorithms/ppo.yaml      # 当前 PPO 家族的共用参数起点
-configs/algorithms/ippo.yaml     # IPPO 的独立配置
-configs/algorithms/iql.yaml      # IQL 的独立配置
-tests/                          # 按 algorithms / environments / evaluation 对应放测试
-scripts/setup.py                # Windows / Ubuntu 共用安装入口
-scripts/smoke.py                # 测试、训练、评估、图表的一键验收
-docs/                           # 算法清单、固定指标、安装说明
-runs/                           # 自动生成的模型和结果，不提交 Git
+```bash
+python -m teamwork.cli doctor
 ```
 
-![研究流程](docs/assets/architecture.svg)
+看到 Python、Torch 和 MPE2 的版本，就可以继续。使用 CPU 时，`cuda_available: false` 是正常的。
 
-## 开发新算法配置
+### 2. 训练、评估并画图
 
-1. `src/teamwork/algorithms/<方法名>/`：实现 `Algorithm` 和 `Policy`，训练循环由方法自己决定。
-2. `algorithms/registry.py`：调用 `register_algorithm("方法名", YourAlgorithm)`。
-3. `configs/algorithms/<方法名>.yaml`：写该方法的配置，不沿用其他算法的超参数。
-4. `tests/algorithms/test_<方法名>.py`：验证更新、保存加载和适用场景。
+依次运行下面三条命令。重复练习时，把三条命令里的 `runs/first-spread` 一起改成一个新目录。
 
-改环境写 `environments/`；定义指标写 `evaluation/metrics.py`；改绘图写 `evaluation/plots.py`。
-当前只支持固定 agent、向量观测和离散动作；不要为尚未实现的方法建立空目录。
-
-## 运行示例（以Windows为例）
-
-> 在Linux,macOS上的环境配置问题,可以参考 [SETUP](docs/SETUP.md)
-
-```powershell
-.\.venv\Scripts\python.exe -m teamwork.cli train --config configs/algorithms/ppo.yaml --algorithm ippo --env spread --steps 2048 --out runs/ippo_spread_s0
-.\.venv\Scripts\python.exe -m teamwork.cli evaluate --checkpoint runs/ippo_spread_s0/model.pt --episodes 10 --out runs/ippo_spread_s0/eval.json --gif runs/ippo_spread_s0/demo.gif
+```bash
+python -m teamwork.cli train --config configs/algorithms/ippo.yaml --env spread --steps 1024 --seed 0 --out runs/first-spread
+python -m teamwork.cli evaluate --checkpoint runs/first-spread/model.pt --episodes 5 --seed 10000 --out runs/first-spread/eval.json --gif runs/first-spread/replay.gif
+python -m teamwork.cli plot --csv runs/first-spread/episodes.csv --out runs/first-spread/training.png
 ```
 
-切换场景用 `--env`，切换已注册方法用 `--algorithm`。Tag 比较需固定另一方；详见 [固定指标与比较规则](docs/EXPERIMENTS.md)。
-备用环境资料在 [references](docs/references/ENVIRONMENTS.md)。
+打开本地 `runs/` 下的 `first-spread`：
 
-`.github/` 保留 CI 与协作模板，`.vscode/` 只是编辑辅助；环境、缓存、`*.egg-info` 等自动目录无需阅读或提交。
+- `model.pt` 是训练保存的模型。评估命令会从这里读取场景和模型参数。
+- `eval.json` 的 `summary` 有 5 个测试回合的平均分，`replay.gif` 播放其中第一个回合。
+- `training.png` 是训练时的回报曲线，原始记录在 `episodes.csv`。
 
-<details>
-<summary>接入时需要遵守的接口与输出格式</summary>
+这次只跑 1,024 步，用于检查训练流程。正式比较请使用 [Spread 基准](docs/experiments/README.md#spread-统一基准) 和对应场景的 [评分规则](docs/experiments/README.md#场景与指标)。
 
-- 环境返回按 agent 命名的字典，保留 `terminated/truncated`；训练 critic 可用 `state()`，actor 只用自己的观测。
-- `task_snapshot()` 仅供评估，不作为执行策略输入；循环策略在每回合 `Policy.reset()` 清空隐藏状态。
-- `Algorithm.train(config, out)` 返回模型路径，预算按联合环境 step，不能覆盖已有实验。
-- 保存 `config.json`、`episodes.csv`、模型；公共入口另写 `training.json`。CSV 含 episode、steps 与各 agent 回报。
-- 检查点用 `torch.save({"config": config, "steps": 实际步数, ...自有状态...}, path)`，内容为 tensors/基础类型。
-- 算法自行实现 `load_policy`；现有 PPO 检查点支持评估，不含完整续训状态。跨场景通常需要重新训练。
+### 3. 找到第一处要改的文件
 
-</details>
+| 想做什么 | 从哪里开始 |
+|---|---|
+| 调一个训练参数 | 复制 [IPPO 的 YAML](configs/algorithms/ippo.yaml)，改 `lr` 等参数，再把新文件交给 `--config`。 |
+| 改进或新增算法 | 打开 [算法目录](docs/algorithms/README.md)，找算法名对应的配置和 [实现](src/teamwork/algorithms/)。新算法按 [开发指南](docs/guides/DEVELOPMENT.md#新增算法) 接入。 |
+| 接入一个仿真场景 | 先看 [Spread 的环境入口](src/teamwork/environments/spread/environment.py)，再按 [环境指南](docs/environments/README.md#接入或编写环境) 登记场景。 |
+| 看懂或调整评分 | 先运行 `python -m teamwork.cli metrics --env spread`，再看 [Spread 的计分代码](src/teamwork/evaluation/metrics/spread/rules.py)。 |
+
+第一次改代码后，可以先跑和改动有关的 [pytest 测试](tests/)，再重跑上面的短训练。 [开发指南里的命令](docs/guides/DEVELOPMENT.md#检查改动)
+
+## 项目资料
+
+- [组内分工和算法配置](docs/algorithms/README.md#分工内容)
+- [MuJoCo 双臂交接的复现步骤](docs/environments/README.md#mujoco-双臂交接)
+- [文档导航](docs/README.md)
+
+![项目流程](docs/assets/architecture.svg)

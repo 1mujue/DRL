@@ -1,0 +1,12 @@
+random_mass_range: [3.0, 6.5]
+training_seeds: [0, 1000, 2000]
+training:
+  total_steps: 8000
+  batch_size: 128
+  update_every: 8
+  actor_lr: 0.000001
+  critic_lr: 0.0003
+evaluation:
+  mass_scales: [1.0, 6.75, 7.0, 7.25]
+  start_seed: 65000
+  episodes: 12

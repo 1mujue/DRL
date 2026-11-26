@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 import numpy as np
+from gymnasium.spaces import Box, Discrete
 from pettingzoo import ParallelEnv
 
 
@@ -18,20 +19,54 @@ class EnvironmentSpec:
     state_size: int
 
 
+@dataclass(frozen=True)
+class ContinuousActionSpec:
+    shape: tuple[int, ...]
+    low: tuple[float, ...]
+    high: tuple[float, ...]
+    dtype: str
+
+
+@dataclass(frozen=True)
+class ContinuousEnvironmentSpec:
+    agents: tuple[str, ...]
+    observation_sizes: tuple[int, ...]
+    action_spaces: tuple[ContinuousActionSpec, ...]
+    state_size: int
+
+
 class Environment(ParallelEnv, ABC):
     @property
     def policy_metadata(self):
         """给规则基线的静态任务信息；不得包含隐藏位置等逐步状态。"""
         return {}
 
-    def describe(self) -> EnvironmentSpec:
-        """reset 后调用。当前基线支持固定 agent、向量观测和离散动作。"""
-        return EnvironmentSpec(
-            tuple(self.possible_agents),
-            tuple(self.observation_space(a).shape[0] for a in self.possible_agents),
-            tuple(int(self.action_space(a).n) for a in self.possible_agents),
-            int(self.state().size),
-        )
+    def describe(self) -> EnvironmentSpec | ContinuousEnvironmentSpec:
+        """在 reset 后记录空间；保留已有离散场景的描述格式。"""
+        agents = tuple(self.possible_agents)
+        observations = tuple(self.observation_space(a).shape[0] for a in agents)
+        spaces = tuple(self.action_space(a) for a in agents)
+        state_size = state(self).size
+        if all(isinstance(space, Discrete) for space in spaces):
+            return EnvironmentSpec(
+                agents, observations, tuple(int(s.n) for s in spaces), state_size
+            )
+        if all(isinstance(space, Box) for space in spaces):
+            return ContinuousEnvironmentSpec(
+                agents,
+                observations,
+                tuple(
+                    ContinuousActionSpec(
+                        s.shape,
+                        tuple(map(float, s.low.flat)),
+                        tuple(map(float, s.high.flat)),
+                        str(s.dtype),
+                    )
+                    for s in spaces
+                ),
+                state_size,
+            )
+        raise TypeError("Environment requires homogeneous action-space types: Discrete or Box")
 
     @abstractmethod
     def task_snapshot(self) -> dict:

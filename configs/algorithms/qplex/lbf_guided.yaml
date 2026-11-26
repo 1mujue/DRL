@@ -1,0 +1,11 @@
+# QPLEX 的带示范变体。每 1 万步保存模型供验证集选择。
+env: lbf
+algorithm: qplex
+seed: 0
+device: cpu
+total_steps: 50000
+reward_aggregation: mean
+mask_unavailable_actions: true
+gradient_mode: dueling
+lbf_demo_every: 10
+successful_action_loss_weight: 1.0

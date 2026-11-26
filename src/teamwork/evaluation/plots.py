@@ -3,6 +3,11 @@
 import csv
 from pathlib import Path
 
+from .robotics.two_arm_handover.plot import plot_handover_trace
+from .robotics.two_arm_lift.plot import plot_lift_trace
+
+__all__ = ["plot_comparison", "plot_handover_trace", "plot_lift_trace", "plot_training_curve"]
+
 
 def plot_comparison(result, path):
     import matplotlib

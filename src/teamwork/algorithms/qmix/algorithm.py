@@ -32,8 +32,10 @@ def resolve_device(device):
 
 def validate_epsilon(epsilon):
     if (
-        isinstance(epsilon, bool) or not isinstance(epsilon, Real)
-        or not math.isfinite(epsilon) or not 0 <= epsilon <= 1
+        isinstance(epsilon, bool)
+        or not isinstance(epsilon, Real)
+        or not math.isfinite(epsilon)
+        or not 0 <= epsilon <= 1
     ):
         raise ValueError("epsilon must be finite and lie in [0, 1]")
     return float(epsilon)
@@ -73,12 +75,16 @@ class QMIXPolicy(Policy):
         if epsilon > 0:
             for index, count in enumerate(self.controller.spec.action_counts):
                 if rng.random() < epsilon:
-                    choices = count if available_actions is None else np.flatnonzero(available_actions[index])
+                    choices = (
+                        count
+                        if available_actions is None
+                        else np.flatnonzero(available_actions[index])
+                    )
                     actions[index] = rng.choice(choices)
         action_tensor = torch.as_tensor(actions, device=self.hidden.device)
-        self.previous_actions = F.one_hot(
-            action_tensor, self.controller.max_actions
-        ).to(self.hidden.dtype).unsqueeze(0)
+        self.previous_actions = (
+            F.one_hot(action_tensor, self.controller.max_actions).to(self.hidden.dtype).unsqueeze(0)
+        )
         return dict(zip(self.controller.spec.agents, map(int, actions)))
 
 
@@ -93,15 +99,18 @@ class QMIXAlgorithm(Algorithm):
         device = resolve_device(device)
         data = torch.load(checkpoint, map_location="cpu", weights_only=True)
         if (
-            not isinstance(data, dict) or data.get("format") != "teamwork.qmix.v1"
+            not isinstance(data, dict)
+            or data.get("format") != "teamwork.qmix.v1"
             or data.get("config", {}).get("algorithm") != "qmix"
         ):
             raise ValueError("Unsupported QMIX checkpoint format or algorithm")
         try:
             saved = data["spec"]
             spec = EnvironmentSpec(
-                tuple(saved["agents"]), tuple(saved["observation_sizes"]),
-                tuple(saved["action_counts"]), saved["state_size"],
+                tuple(saved["agents"]),
+                tuple(saved["observation_sizes"]),
+                tuple(saved["action_counts"]),
+                saved["state_size"],
             )
         except (KeyError, TypeError) as error:
             raise ValueError("Invalid QMIX checkpoint EnvironmentSpec") from error
@@ -113,6 +122,7 @@ class QMIXAlgorithm(Algorithm):
         controller.load_state_dict(data["controller"])
         controller.eval()
         return QMIXPolicy(
-            controller, data["config"]["evaluation_epsilon"],
+            controller,
+            data["config"]["evaluation_epsilon"],
             action_availability=lbf_action_availability(data["config"], env, spec),
         )

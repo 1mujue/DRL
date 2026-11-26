@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from teamwork.evaluation.compare import compare_results
-from teamwork.evaluation.evaluator import evaluate, save_result
+from teamwork.evaluation.evaluator import _training_conditions, evaluate, save_result
 from teamwork.evaluation.metrics import (
     LBFMetrics,
     RWAREMetrics,
@@ -144,3 +144,100 @@ def test_all_environments_have_complete_fixed_protocol(name):
     assert result["schema_version"] == 2
     assert set(result["summary"]) == {d["name"] for d in result["benchmark"]["protocol"]["metrics"]}
     assert len(result["benchmark_id"]) == 64
+
+
+def test_compare_requires_matching_demonstration_provenance(tmp_path):
+    a = evaluate("spread", episodes=1, env_kwargs={"max_cycles": 2})
+    a.update(
+        algorithm="a",
+        training_seed=0,
+        training_steps=100,
+        training_initialization={
+            "method": "behavior_cloning_then_online",
+            "demonstration_sha256": "a" * 64,
+            "demonstration_joint_steps": 200,
+        },
+        warm_start_sha256="c" * 64,
+    )
+    b = deepcopy(a)
+    b.update(algorithm="b", warm_start_sha256="d" * 64)
+    report = compare_results(write_results(tmp_path, a, b), "success")
+    assert report["training_initialization"] == a["training_initialization"]
+    for field, new in [
+        ("demonstration_sha256", "b" * 64),
+        ("demonstration_joint_steps", 400),
+        ("method", "from_scratch"),
+    ]:
+        changed = deepcopy(b)
+        changed["training_initialization"][field] = new
+        with pytest.raises(ValueError, match="Training initialization"):
+            compare_results(write_results(tmp_path, a, changed), "success")
+    different_environment = {**b, "training_env_kwargs": {"pot_mass_scale": 2}}
+    with pytest.raises(ValueError, match="Training environment"):
+        compare_results(write_results(tmp_path, a, different_environment), "success")
+    b.pop("training_initialization")
+    with pytest.raises(ValueError, match="Training initialization"):
+        compare_results(write_results(tmp_path, a, b), "success")
+
+
+def test_handover_requires_physical_transfer_and_uninterrupted_receiver_hold():
+    from teamwork.evaluation.metrics import HANDOVER_HOLD_STEPS, make_metrics
+
+    suite = make_metrics("two_arm_handover")
+    returns = {"arm_0": 0.0, "arm_1": 0.0}
+
+    def sample(giver, receiver):
+        return {"giver_grasp": giver, "receiver_grasp": receiver, "object_height_m": 0.15}
+
+    suite.reset(sample(False, False))
+    for _ in range(HANDOVER_HOLD_STEPS):
+        suite.observe(sample(False, True))
+    assert suite.finish(returns, tuple(returns))["handover_success"] == 0
+    suite.observe(sample(True, False))
+    suite.observe(sample(True, True))
+    suite.observe(sample(False, False))
+    for _ in range(HANDOVER_HOLD_STEPS):
+        suite.observe(sample(False, True))
+    assert suite.finish(returns, tuple(returns))["handover_success"] == 0
+    suite.observe(sample(True, False))
+    suite.observe(sample(True, True))
+    for _ in range(HANDOVER_HOLD_STEPS):
+        suite.observe(sample(False, True))
+    result = suite.finish(returns, tuple(returns))
+    assert result["handover_success"] == 1
+    assert result["first_handover_step"] == 3 * HANDOVER_HOLD_STEPS + 5
+
+
+def test_general_comparison_rejects_mixing_lift_timing_treatments(tmp_path):
+    first = evaluate("spread", episodes=1, env_kwargs={"max_cycles": 2})
+    first.update(algorithm="mock", training_seed=0, training_steps=200)
+    second = deepcopy(first)
+    second["training_seed"] = 1
+    first["lift_timing"] = {"mode": "clock"}
+    second["lift_timing"] = {"mode": "mutual_grasp"}
+    with pytest.raises(ValueError, match="Lift timing modes differ"):
+        compare_results(write_results(tmp_path, first, second), "success")
+
+
+def test_compare_uses_effective_spread_reward_and_preserves_divisor(tmp_path):
+    settings = {"max_cycles": 2, "local_ratio": 0}
+    baseline = evaluate("spread", episodes=1, env_kwargs=settings)
+    rows = []
+    for algorithm in ("ippo", "qmix", "coma"):
+        result = deepcopy(baseline)
+        config = {"algorithm": algorithm, "env": "spread", "reward_scale": 1.0}
+        result.update(
+            algorithm=algorithm,
+            training_steps=100,
+            training_seed=0,
+            training_conditions=_training_conditions(config, settings),
+        )
+        rows.append(result)
+    report = compare_results(write_results(tmp_path, *rows), "success")
+    assert report["training_conditions"]["reward_aggregation"] == "shared"
+    assert rows[0]["training_conditions"]["configured_reward_aggregation"] == "individual"
+    assert rows[2]["training_conditions"]["configured_reward_aggregation"] == "first_agent"
+
+    rows[2]["training_conditions"]["reward_divisor"] = 10.0
+    with pytest.raises(ValueError, match="Training reward"):
+        compare_results(write_results(tmp_path, *rows), "success")

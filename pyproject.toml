@@ -14,8 +14,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8,<10", "ruff>=0.11,<1"]
+dev = ["pytest>=8.4,<10", "ruff>=0.11,<1"]
 extra-envs = ["lbforaging==2.0.0", "rware==2.0.0"]
+robotics = ["robosuite==1.5.2", "mujoco==3.3.7"]
 
 [project.scripts]
 marl = "teamwork.cli:main"
@@ -25,6 +26,8 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# A sourced ROS installation can expose its own pytest plugins via PYTHONPATH.
+addopts = "--disable-plugin-autoload"
 
 [tool.ruff]
 line-length = 100

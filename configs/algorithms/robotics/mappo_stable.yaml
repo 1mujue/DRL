@@ -1,0 +1,19 @@
+# 连续集中 critic PPO 基线。历史文件名保留以便复现实验。
+algorithm: centralized_ppo_continuous
+actor_type: lift_pose
+env: two_arm_lift
+env_kwargs:
+  horizon: 200
+  reward_shaping: true
+  pose_feedback: true
+seed: 0
+device: cpu
+total_steps: 2048
+rollout_steps: 256
+batch_size: 128
+epochs: 2
+lr: 0.00001
+entropy_coef: 0.0
+gamma: 0.99
+gae_lambda: 0.95
+clip: 0.1

@@ -1,4 +1,4 @@
-# 项目内实现的前馈 VDN；详见 docs/VDN.md。
+# 项目内实现的前馈 VDN；详见 docs/algorithms/VDN.md。
 env: spread
 algorithm: vdn
 seed: 0

@@ -153,9 +153,7 @@ def test_train_batch_updates_every_network_and_reports_finite_metrics():
         assert not torch.allclose(value, after[name]), name
     # 目标网络按 tau 软同步，单次更新的变化量可能小于 float32 分辨率，故只要求整体有变化。
     assert any(
-        not torch.equal(before[name], after[name])
-        for name in before
-        if name.startswith("target_")
+        not torch.equal(before[name], after[name]) for name in before if name.startswith("target_")
     )
     for key in (
         "critic_loss",
@@ -198,9 +196,7 @@ def test_soft_sync_with_full_rate_copies_the_online_networks():
         (learner.model.target_actors, learner.model.actors),
         (learner.model.target_critics, learner.model.critics),
     ):
-        for target_parameter, source_parameter in zip(
-            target.parameters(), source.parameters()
-        ):
+        for target_parameter, source_parameter in zip(target.parameters(), source.parameters()):
             assert torch.equal(target_parameter, source_parameter)
 
 
@@ -287,9 +283,9 @@ def test_train_writes_the_public_artifacts_and_learns(tmp_path):
     contract = trainer.training_contract(
         trainer.resolve_config(SPREAD_CONFIG), ["agent_0", "agent_1", "agent_2"]
     )
-    saved_contract = torch.load(
-        checkpoint, map_location="cpu", weights_only=True
-    )["training_contract"]
+    saved_contract = torch.load(checkpoint, map_location="cpu", weights_only=True)[
+        "training_contract"
+    ]
     assert saved_contract == contract
     assert saved_contract["algorithm"] == "hasac_discrete"
     assert saved_contract["critic_input"] == "central_state_plus_joint_action_one_hot"

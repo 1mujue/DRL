@@ -31,7 +31,8 @@ class LocalQController(nn.Module):
     def __init__(self, spec: EnvironmentSpec, config):
         super().__init__()
         if (
-            not spec.agents or len(set(spec.agents)) != len(spec.agents)
+            not spec.agents
+            or len(set(spec.agents)) != len(spec.agents)
             or len(spec.agents) != len(spec.observation_sizes)
             or len(spec.agents) != len(spec.action_counts)
             or min((*spec.observation_sizes, *spec.action_counts, spec.state_size)) < 1
@@ -48,13 +49,16 @@ class LocalQController(nn.Module):
         width += len(spec.agents) if self.use_agent_id else 0
         self.input_layer = nn.Linear(width, self.hidden_size)
         self.core = (
-            nn.GRUCell(self.hidden_size, self.hidden_size) if self.use_rnn
+            nn.GRUCell(self.hidden_size, self.hidden_size)
+            if self.use_rnn
             else nn.Linear(self.hidden_size, self.hidden_size)
         )
         self.output_layer = nn.Linear(self.hidden_size, self.max_actions)
         self.register_buffer("agent_ids", torch.eye(len(spec.agents)))
         counts = torch.tensor(spec.action_counts)
-        self.register_buffer("action_mask", torch.arange(self.max_actions)[None, :] < counts[:, None])
+        self.register_buffer(
+            "action_mask", torch.arange(self.max_actions)[None, :] < counts[:, None]
+        )
 
     def initial_hidden(self, batch_size):
         return self.agent_ids.new_zeros(batch_size, len(self.spec.agents), self.hidden_size)
@@ -102,7 +106,8 @@ class QMixer(nn.Module):
 
         def hypernetwork(output_size):
             return nn.Sequential(
-                nn.Linear(state_size, hypernet_size), nn.ReLU(),
+                nn.Linear(state_size, hypernet_size),
+                nn.ReLU(),
                 nn.Linear(hypernet_size, output_size),
             )
 

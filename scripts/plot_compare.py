@@ -1,4 +1,5 @@
 """把多个 run 的 episodes.csv 聚合成均值±标准差曲线。"""
+
 import argparse
 import csv
 from collections import defaultdict
@@ -17,7 +18,7 @@ def load_curve(csv_path, window=20):
     if len(ret) >= window:
         kernel = np.ones(window) / window
         ret = np.convolve(ret, kernel, mode="valid")
-        steps = steps[window - 1:]
+        steps = steps[window - 1 :]
     return steps, ret
 
 
